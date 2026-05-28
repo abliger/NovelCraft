@@ -7,6 +7,7 @@ let package = Package(
         .macOS(.v14),
         .iOS(.v17),
     ],
+
     products: [
         .executable(
             name: "NovelCraft",

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 
+/// 侧边栏标签枚举，对应主界面的五个功能模块。
 enum SidebarTab: String, CaseIterable {
     case chapters = "章节"
     case characters = "角色"
@@ -8,6 +9,7 @@ enum SidebarTab: String, CaseIterable {
     case outline = "大纲"
     case notes = "便签"
     
+    /// 每个标签对应的系统图标名称
     var icon: String {
         switch self {
         case .chapters: return "list.bullet.rectangle"
@@ -19,18 +21,29 @@ enum SidebarTab: String, CaseIterable {
     }
 }
 
+/// 应用主界面视图，负责管理项目选择、侧边栏导航、编辑器展示与全局工具栏。
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor<Project>(\.updatedAt, order: .reverse)]) private var projects: [Project]
     
-    @State private var selectedProject: Project? = nil
+    /// 当前选中的项目（使用 ID 避免引用失效）
+    @State private var selectedProjectID: UUID? = nil
+    /// 当前侧边栏选中的标签
     @State private var selectedTab: SidebarTab = .chapters
+    /// 当前选中的章节
     @State private var selectedChapter: Chapter? = nil
-    @State private var isShowingProjectList = true
+    /// 是否进入专注模式
     @State private var isFocusMode = false
+    /// 是否显示设置面板
     @State private var isShowingSettings = false
+    /// 是否显示导出面板
     @State private var isShowingExport = false
-    @State private var searchText = ""
+    
+    /// 根据 ID 重新获取项目实例（防止引用失效或对象被删除）
+    private var selectedProject: Project? {
+        guard let id = selectedProjectID else { return nil }
+        return projects.first { $0.id == id }
+    }
     
     var body: some View {
         Group {
@@ -41,17 +54,25 @@ struct ContentView: View {
                     isFocusMode: $isFocusMode
                 )
             } else if selectedProject == nil {
-                ProjectListView(selectedProject: $selectedProject)
+                ProjectListView(selectedProjectID: $selectedProjectID)
             } else {
                 mainInterface
             }
         }
+        #if os(macOS)
         .frame(minWidth: 900, minHeight: 600)
+        #endif
         .sheet(isPresented: $isShowingSettings) {
             SettingsView()
         }
+        .sheet(isPresented: $isShowingExport) {
+            if let project = selectedProject {
+                ExportView(project: project, chapter: selectedChapter)
+            }
+        }
     }
     
+    /// 主编辑界面，包含侧边栏与详情区的 NavigationSplitView。
     @ViewBuilder
     private var mainInterface: some View {
         NavigationSplitView {
@@ -63,7 +84,8 @@ struct ContentView: View {
             ToolbarItem(placement: .navigation) {
                 Button {
                     withAnimation {
-                        selectedProject = nil
+                        selectedProjectID = nil
+                        selectedChapter = nil
                     }
                 } label: {
                     Image(systemName: "books.vertical")
@@ -108,6 +130,7 @@ struct ContentView: View {
         }
     }
     
+    /// 侧边栏视图，包含分段选择器与对应功能模块列表。
     @ViewBuilder
     private var sidebar: some View {
         VStack(spacing: 0) {
@@ -140,11 +163,12 @@ struct ContentView: View {
         }
     }
     
+    /// 详情区视图，根据是否选中章节展示编辑器或空状态。
     @ViewBuilder
     private var detailView: some View {
-        if let chapter = selectedChapter {
+        if let chapter = selectedChapter, let project = selectedProject {
             EditorView(
-                project: selectedProject!,
+                project: project,
                 chapter: chapter
             )
         } else {
@@ -153,6 +177,7 @@ struct ContentView: View {
     }
 }
 
+/// 未选中章节时展示的占位视图，显示项目统计信息。
 struct EmptyEditorView: View {
     let project: Project?
     
@@ -178,6 +203,7 @@ struct EmptyEditorView: View {
     }
 }
 
+/// 统计信息卡片，用于展示字数、目标等数值。
 struct StatCard: View {
     let title: String
     let value: String

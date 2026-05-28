@@ -1,27 +1,41 @@
 import SwiftUI
 
+/// 全屏专注写作模式视图，隐藏无关界面元素，提供计时器与字数统计浮层。
 struct FocusModeView: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.colorScheme) private var colorScheme
     
     let project: Project
     @Bindable var chapter: Chapter
     @Binding var isFocusMode: Bool
     
+    /// 编辑器中的文本内容
     @State private var editorText: String = ""
+    /// 是否显示统计浮层
     @State private var showStats = false
+    /// 是否显示计时器
     @State private var showTimer = false
+    /// 计时器已运行秒数
     @State private var timerSeconds = 0
+    /// 计时器是否正在运行
     @State private var isTimerRunning = false
-    @State private var timer: Timer? = nil
+    /// 当前字数目标
     @State private var wordGoal = 0
+    /// 编辑器字体大小
     @State private var fontSize: CGFloat = 18
+    /// 编辑区域最大行宽
     @State private var lineWidth: CGFloat = 700
+    /// 自动保存任务（用于 debounce）
+    @State private var saveTask: Task<Void, Never>?
     
     var body: some View {
         ZStack {
+            #if os(macOS)
             Color(.textBackgroundColor)
                 .ignoresSafeArea()
+            #else
+            Color(.systemBackground)
+                .ignoresSafeArea()
+            #endif
             
             VStack(spacing: 0) {
                 HStack {
@@ -60,7 +74,7 @@ struct FocusModeView: View {
                         Button {
                             showTimer.toggle()
                             if showTimer && !isTimerRunning {
-                                startTimer()
+                                isTimerRunning = true
                             }
                         } label: {
                             Image(systemName: showTimer ? "timer" : "timer.slash")
@@ -90,43 +104,54 @@ struct FocusModeView: View {
                 .padding()
                 .background(.ultraThinMaterial)
                 
-                ScrollView {
-                    TextEditor(text: $editorText)
-                        .font(.system(size: fontSize))
-                        .lineSpacing(10)
-                        .scrollContentBackground(.hidden)
-                        .background(Color.clear)
-                        .frame(maxWidth: lineWidth, minHeight: 600)
-                        .padding(.top, 40)
-                        .padding(.bottom, 100)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                TextEditor(text: $editorText)
+                    .font(.system(size: fontSize))
+                    .lineSpacing(10)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.clear)
+                    .frame(maxWidth: lineWidth, minHeight: 600)
+                    .padding(.top, 40)
+                    .padding(.bottom, 100)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .onAppear {
             editorText = chapter.content
             wordGoal = project.dailyWordGoal
         }
+        .onChange(of: chapter.id) { _, _ in
+            editorText = chapter.content
+        }
         .onChange(of: editorText) { _, newValue in
             chapter.content = newValue
-            chapter.updatedAt = Date()
-            try? modelContext.save()
+            debouncedSave()
+        }
+        .onChange(of: showTimer) { _, showing in
+            if !showing {
+                isTimerRunning = false
+            }
         }
         .onDisappear {
-            timer?.invalidate()
-            timer = nil
+            saveTask?.cancel()
         }
-    }
-    
-    private func startTimer() {
-        isTimerRunning = true
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [self] _ in
-            MainActor.assumeIsolated {
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            if isTimerRunning {
                 timerSeconds += 1
             }
         }
     }
     
+    /// 延迟保存，避免每次按键都触发数据库写入
+    private func debouncedSave() {
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            try? modelContext.save()
+        }
+    }
+    
+    /// 将秒数格式化为 "H:MM:SS" 或 "MM:SS"
     private func formatTime(_ seconds: Int) -> String {
         let hours = seconds / 3600
         let minutes = (seconds % 3600) / 60
@@ -135,30 +160,5 @@ struct FocusModeView: View {
             return String(format: "%d:%02d:%02d", hours, minutes, secs)
         }
         return String(format: "%02d:%02d", minutes, secs)
-    }
-}
-
-struct StatBadge: View {
-    let icon: String
-    let value: String
-    let label: String
-    
-    var body: some View {
-        VStack(spacing: 2) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.caption)
-                Text(value)
-                    .font(.system(.body, design: .rounded))
-                    .fontWeight(.semibold)
-            }
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial)
-        .cornerRadius(8)
     }
 }

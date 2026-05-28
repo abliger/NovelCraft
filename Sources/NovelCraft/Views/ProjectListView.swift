@@ -1,15 +1,17 @@
 import SwiftUI
 import SwiftData
 
+/// 项目列表视图，以卡片网格形式展示所有小说项目，支持搜索与新建。
 struct ProjectListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor<Project>(\.updatedAt, order: .reverse)]) private var projects: [Project]
     
-    @Binding var selectedProject: Project?
+    @Binding var selectedProjectID: UUID?
     @State private var isShowingNewProject = false
     @State private var searchText = ""
     @State private var projectToDelete: Project? = nil
     
+    /// 根据搜索文本过滤后的项目列表
     private var filteredProjects: [Project] {
         if searchText.isEmpty { return projects }
         return projects.filter {
@@ -25,17 +27,21 @@ struct ProjectListView: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 280, maximum: 320), spacing: 20)], spacing: 20) {
                     ForEach(filteredProjects) { project in
-                        ProjectCard(project: project, selectedProject: $selectedProject)
+                        ProjectCard(project: project, selectedProjectID: $selectedProjectID)
                     }
                 }
                 .padding()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
+        #if os(macOS)
+        .background(Color(nsColor: .windowBackgroundColor))
+        #else
+        .background(Color(.systemBackground))
+        #endif
         .sheet(isPresented: $isShowingNewProject) {
             NewProjectView { project in
-                selectedProject = project
+                selectedProjectID = project.id
             }
         }
         .alert("确认删除", isPresented: Binding(
@@ -54,85 +60,69 @@ struct ProjectListView: View {
         }
     }
     
+    /// 顶部标题栏，包含项目计数、搜索框与新建按钮。
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("我的小说")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                Text("\(projects.count) 个项目")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+        HStack(spacing: 16) {
+            Text("项目")
+                .font(.title2)
+                .fontWeight(.bold)
+            
+            SearchField(text: $searchText)
+                .frame(maxWidth: 300)
             
             Spacer()
             
-            HStack(spacing: 12) {
-                SearchField(text: $searchText)
-                    .frame(width: 250)
-                
-                Button {
-                    isShowingNewProject = true
-                } label: {
-                    Label("新建项目", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
+            Button {
+                isShowingNewProject = true
+            } label: {
+                Label("新建项目", systemImage: "plus")
             }
+            .buttonStyle(.borderedProminent)
         }
         .padding()
-        .background(.ultraThinMaterial)
     }
 }
 
+/// 项目卡片视图，展示单个项目的标题、作者、进度与统计信息。
 struct ProjectCard: View {
     let project: Project
-    @Binding var selectedProject: Project?
+    @Binding var selectedProjectID: UUID?
     
     var body: some View {
         Button {
-            selectedProject = project
+            selectedProjectID = project.id
         } label: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(LinearGradient(
-                            colors: [.purple.opacity(0.3), .blue.opacity(0.3)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
-                        .frame(width: 60, height: 80)
-                        .overlay(
-                            Image(systemName: "book.closed")
-                                .font(.title2)
-                                .foregroundStyle(.white)
-                        )
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(project.title)
-                            .font(.headline)
-                            .lineLimit(2)
-                        
-                        if !project.author.isEmpty {
-                            Text(project.author)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    Text(project.title)
+                        .font(.headline)
+                        .lineLimit(1)
                     
                     Spacer()
+                    
+                    if let data = project.coverImageData, let nsImage = NSImage(data: data) {
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 40, height: 40)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
                 }
                 
-                if !project.summary.isEmpty {
-                    Text(project.summary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                }
+                Text(project.author.isEmpty ? "未填写作者" : project.author)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 
-                Divider()
+                Text(project.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                
+                Spacer()
                 
                 HStack {
-                    Label("\(project.totalWordCount) 字", systemImage: "textformat")
+                    Text("\(project.totalWordCount) 字")
                         .font(.caption2)
                     
                     Spacer()
@@ -146,13 +136,18 @@ struct ProjectCard: View {
                 }
             }
             .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            #if os(macOS)
+            .background(Color(nsColor: .controlBackgroundColor))
+            #else
+            .background(Color(.secondarySystemBackground))
+            #endif
             .cornerRadius(12)
         }
         .buttonStyle(.plain)
     }
 }
 
+/// 新建项目弹窗，收集小说名称、作者、简介与写作目标。
 struct NewProjectView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -230,6 +225,7 @@ struct NewProjectView: View {
     }
 }
 
+/// 通用搜索输入框，带清除按钮。
 struct SearchField: View {
     @Binding var text: String
     

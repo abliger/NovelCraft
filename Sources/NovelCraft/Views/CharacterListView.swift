@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 
+/// 角色列表视图，展示项目中的所有角色，支持搜索、新增与编辑。
 struct CharacterListView: View {
     @Environment(\.modelContext) private var modelContext
     let project: Project?
@@ -9,6 +10,7 @@ struct CharacterListView: View {
     @State private var searchText = ""
     @State private var selectedCharacter: Character?
     
+    /// 按 order 排序并根据搜索文本过滤后的角色列表
     private var characters: [Character] {
         let all = (project?.characters ?? []).sorted { $0.order < $1.order }
         if searchText.isEmpty { return all }
@@ -50,6 +52,7 @@ struct CharacterListView: View {
     }
 }
 
+/// 单行角色视图，展示角色头像、姓名、别名与基本信息。
 struct CharacterRow: View {
     let character: Character
     
@@ -95,6 +98,7 @@ struct CharacterRow: View {
     }
 }
 
+/// 角色编辑/新建弹窗，包含角色的完整信息表单。
 struct CharacterEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -169,6 +173,7 @@ struct CharacterEditView: View {
                     Button("保存") {
                         save()
                     }
+                    .disabled(name.isEmpty)
                 }
                 if character != nil {
                     ToolbarItem(placement: .destructiveAction) {
@@ -200,6 +205,7 @@ struct CharacterEditView: View {
         }
     }
     
+    /// 保存角色信息：更新现有角色或创建新角色。
     private func save() {
         if let char = character {
             char.name = name

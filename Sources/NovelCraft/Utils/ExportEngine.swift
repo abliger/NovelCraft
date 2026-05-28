@@ -5,30 +5,41 @@ import AppKit
 #if canImport(UIKit)
 import UIKit
 #endif
+import ZIPFoundation
 
+/// 导出范围枚举，指定导出当前章节或整本小说。
 enum ExportScope {
     case chapter
     case fullProject
 }
 
+/// 导出过程中可能发生的错误类型。
 enum ExportError: Error {
     case failedToCreateFile
     case failedToWrite
     case unsupportedFormat
     case zipFailed
+    case noChapterSelected
 }
 
+/// 导出引擎，负责将项目或章节内容导出为 Markdown、纯文本、PDF 或 EPUB 格式。
 struct ExportEngine {
     let project: Project
     let chapter: Chapter?
     
+    /// 执行导出操作，将内容写入临时目录并返回生成的文件 URL。
     func export(format: ExportFormat, scope: ExportScope, includeMetadata: Bool) throws -> URL {
+        if scope == .chapter && chapter == nil {
+            throw ExportError.noChapterSelected
+        }
+        
         let content = generateContent(scope: scope, includeMetadata: includeMetadata)
         let fileName = generateFileName(format: format, scope: scope)
         
         let tempDir = FileManager.default.temporaryDirectory
         let fileURL = tempDir.appendingPathComponent(fileName)
         
+        /// 若临时目录中已存在同名文件，则先删除
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try FileManager.default.removeItem(at: fileURL)
         }
@@ -48,6 +59,7 @@ struct ExportEngine {
         return fileURL
     }
     
+    /// 根据导出范围与是否包含元数据，生成完整的 Markdown 文本内容。
     private func generateContent(scope: ExportScope, includeMetadata: Bool) -> String {
         var parts: [String] = []
         
@@ -87,6 +99,7 @@ struct ExportEngine {
         return parts.joined(separator: "\n")
     }
     
+    /// 根据导出格式与范围生成安全的文件名。
     private func generateFileName(format: ExportFormat, scope: ExportScope) -> String {
         let baseName: String
         switch scope {
@@ -95,10 +108,26 @@ struct ExportEngine {
         case .fullProject:
             baseName = project.title
         }
-        let sanitized = baseName.replacingOccurrences(of: "/", with: "-")
+        let sanitized = sanitizeFileName(baseName)
         return "\(sanitized).\(format.fileExtension)"
     }
     
+    /// 清理文件名中的危险字符，防止路径遍历和无效文件名。
+    private func sanitizeFileName(_ name: String) -> String {
+        var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|.")
+        result = result.components(separatedBy: invalidChars).joined(separator: "-")
+        result = result.replacingOccurrences(of: "..", with: "-")
+        if result.hasPrefix("-") {
+            result = "_" + result
+        }
+        if result.isEmpty {
+            result = "未命名导出"
+        }
+        return result
+    }
+    
+    /// 去除 Markdown 标记符号，转换为纯文本。
     private func stripMarkdown(_ text: String) -> String {
         var result = text
         result = result.replacingOccurrences(of: "# ", with: "")
@@ -112,6 +141,7 @@ struct ExportEngine {
         return result
     }
     
+    /// 根据当前平台（macOS / iOS）调用对应的 PDF 生成方法。
     private func generatePDF(content: String, to url: URL) throws {
         #if canImport(AppKit)
         try generatePDFMacOS(content: content, to: url)
@@ -123,6 +153,7 @@ struct ExportEngine {
     }
     
     #if canImport(AppKit)
+    /// 在 macOS 上使用 AppKit 与 Core Graphics 生成 PDF 文件。
     private func generatePDFMacOS(content: String, to url: URL) throws {
         let plainText = stripMarkdown(content)
         let textStorage = NSTextStorage(string: plainText)
@@ -163,13 +194,17 @@ struct ExportEngine {
     #endif
     
     #if canImport(UIKit)
+    /// 在 iOS 上使用 UIKit 的 PDF 绘图上下文生成 PDF 文件。
     private func generatePDFiOS(content: String, to url: URL) throws {
         let pdfData = NSMutableData()
         UIGraphicsBeginPDFContextToData(pdfData, CGRect(x: 0, y: 0, width: 612, height: 792), nil)
         
         guard UIGraphicsGetCurrentContext() != nil else {
+            UIGraphicsEndPDFContext()
             throw ExportError.failedToCreateFile
         }
+        
+        defer { UIGraphicsEndPDFContext() }
         
         UIGraphicsBeginPDFPage()
         
@@ -182,15 +217,16 @@ struct ExportEngine {
         let attributedString = NSAttributedString(string: plainText, attributes: attributes)
         attributedString.draw(in: textRect)
         
-        UIGraphicsEndPDFContext()
         try pdfData.write(to: url)
     }
     #endif
     
+    /// 生成标准 EPUB 3.0 文件，包含 mimetype、META-INF/container.xml、OEBPS/content.opf 与章节 HTML。
     private func generateEPUB(content: String, to url: URL, includeMetadata: Bool) throws {
         let fileManager = FileManager.default
         let tempDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: tempDir) }
         
         let mimetypeURL = tempDir.appendingPathComponent("mimetype")
         try "application/epub+zip".write(to: mimetypeURL, atomically: true, encoding: .utf8)
@@ -245,44 +281,79 @@ struct ExportEngine {
         try opf.write(to: oebpsDir.appendingPathComponent("content.opf"), atomically: true, encoding: .utf8)
         
         try zipDirectory(tempDir, to: url)
-        try fileManager.removeItem(at: tempDir)
     }
     
+    /// 使用 ZIPFoundation 将临时目录打包为 EPUB 文件（纯 Swift，跨平台）。
     private func zipDirectory(_ source: URL, to destination: URL) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
-        process.arguments = ["-r", "-q", destination.path, "."]
-        process.currentDirectoryURL = source
+        let archive = try Archive(url: destination, accessMode: .create)
         
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+        let fileManager = FileManager.default
+        let enumerator = fileManager.enumerator(
+            at: source,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        )
         
-        try process.run()
-        process.waitUntilExit()
-        
-        guard process.terminationStatus == 0 else {
-            throw ExportError.zipFailed
+        let sourceComponents = source.standardizedFileURL.pathComponents
+        while let fileURL = enumerator?.nextObject() as? URL {
+            if fileURL.hasDirectoryPath { continue }
+            let fileComponents = fileURL.standardizedFileURL.pathComponents
+            guard fileComponents.count > sourceComponents.count else { continue }
+            let relativeComponents = Array(fileComponents[sourceComponents.count...])
+            let relativePath = relativeComponents.joined(separator: "/")
+            guard !relativePath.isEmpty else { continue }
+            let compression: CompressionMethod = relativePath == "mimetype" ? .none : .deflate
+            try archive.addEntry(with: relativePath, relativeTo: source, compressionMethod: compression)
         }
     }
     
+    /// 将简易 Markdown 转换为 HTML，支持标题、粗体、斜体、代码块、引用与列表。
     private func convertToHTML(_ markdown: String) -> String {
         var html = escapeHTML(markdown)
         
-        let headingPattern = try! NSRegularExpression(pattern: "^(#{1,6})\\s+(.+)$", options: .anchorsMatchLines)
-        let headingMatches = headingPattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
-        for match in headingMatches.reversed() {
-            let level = (html as NSString).substring(with: match.range(at: 1)).count
-            let text = (html as NSString).substring(with: match.range(at: 2))
-            let replacement = "<h\(level)>\(text)</h\(level)>"
-            html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
+        let headingPattern = try? NSRegularExpression(pattern: "^(#{1,6})\\s+(.+)$", options: .anchorsMatchLines)
+        if let pattern = headingPattern {
+            let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
+            for match in matches.reversed() {
+                let level = (html as NSString).substring(with: match.range(at: 1)).count
+                let text = (html as NSString).substring(with: match.range(at: 2))
+                let replacement = "<h\(level)>\(text)</h\(level)>"
+                html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
+            }
         }
         
         html = html.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "<strong>$1</strong>", options: .regularExpression)
         html = html.replacingOccurrences(of: "\\*(.+?)\\*", with: "<em>$1</em>", options: .regularExpression)
-        html = html.replacingOccurrences(of: "```\\n(.+?)\\n```", with: "<pre><code>$1</code></pre>", options: .regularExpression)
-        html = html.replacingOccurrences(of: "^>\\s+(.+)$", with: "<blockquote>$1</blockquote>", options: .regularExpression)
-        html = html.replacingOccurrences(of: "^\\-\\s+(.+)$", with: "<li>$1</li>", options: .regularExpression)
+        
+        let codePattern = try? NSRegularExpression(pattern: "```(.+?)```", options: .dotMatchesLineSeparators)
+        if let pattern = codePattern {
+            let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
+            for match in matches.reversed() {
+                let code = (html as NSString).substring(with: match.range(at: 1))
+                let replacement = "<pre><code>\(code)</code></pre>"
+                html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
+            }
+        }
+        
+        let quotePattern = try? NSRegularExpression(pattern: "^>\\s+(.+)$", options: .anchorsMatchLines)
+        if let pattern = quotePattern {
+            let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
+            for match in matches.reversed() {
+                let text = (html as NSString).substring(with: match.range(at: 1))
+                let replacement = "<blockquote>\(text)</blockquote>"
+                html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
+            }
+        }
+        
+        let listPattern = try? NSRegularExpression(pattern: "^-\\s+(.+)$", options: .anchorsMatchLines)
+        if let pattern = listPattern {
+            let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
+            for match in matches.reversed() {
+                let text = (html as NSString).substring(with: match.range(at: 1))
+                let replacement = "<li>\(text)</li>"
+                html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
+            }
+        }
         
         let paragraphs = html.split(separator: "\n\n", omittingEmptySubsequences: false)
         html = paragraphs.map { para in
@@ -297,14 +368,18 @@ struct ExportEngine {
         return html
     }
     
+    /// 对文本中的 HTML 特殊字符进行转义。
     private func escapeHTML(_ text: String) -> String {
         var result = text
         result = result.replacingOccurrences(of: "&", with: "&amp;")
         result = result.replacingOccurrences(of: "<", with: "&lt;")
         result = result.replacingOccurrences(of: ">", with: "&gt;")
+        result = result.replacingOccurrences(of: "\"", with: "&quot;")
+        result = result.replacingOccurrences(of: "'", with: "&#39;")
         return result
     }
     
+    /// 对文本中的 XML 特殊字符进行转义（包含引号）。
     private func escapeXML(_ text: String) -> String {
         var result = text
         result = result.replacingOccurrences(of: "&", with: "&amp;")

@@ -1,16 +1,25 @@
 import Foundation
 import SwiftData
 
+/// 世界观设定实体，用于存储小说的各类设定（地理、历史、文化、魔法/科技等）。
 @Model
 final class WorldSetting {
     @Attribute(.unique) var id: UUID
+    
+    /// 设定分类
     var category: String
+    /// 设定标题
     var title: String
+    /// 设定详细内容
     var content: String
+    /// 在项目中的排序序号
     var order: Int
+    /// 创建时间
     var createdAt: Date
+    /// 最后更新时间
     var updatedAt: Date
     
+    /// 所属项目（反向关系）
     @Relationship(deleteRule: .nullify)
     var project: Project?
     

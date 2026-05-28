@@ -1,13 +1,25 @@
 import SwiftUI
 
+/// 应用设置视图：管理用户偏好配置，包括外观、编辑器行为与默认写作目标
 struct SettingsView: View {
+    
+    // MARK: - AppStorage 偏好设置
+    
+    /// 主题模式：0 跟随系统，1 浅色，2 深色
     @AppStorage("themeMode") private var themeMode = 0
+    /// 编辑器字体大小（pt）
     @AppStorage("editorFontSize") private var editorFontSize: Double = 16
+    /// 编辑器行间距（pt）
     @AppStorage("editorLineSpacing") private var editorLineSpacing: Double = 8
+    /// 自动保存间隔（秒）
     @AppStorage("autoSaveInterval") private var autoSaveInterval: Double = 30
+    /// 是否显示编辑器行号
     @AppStorage("showLineNumbers") private var showLineNumbers = false
+    /// 是否启用打字机模式（光标保持在屏幕中央）
     @AppStorage("enableTypewriterMode") private var enableTypewriterMode = false
+    /// 新建项目时的默认目标字数
     @AppStorage("defaultTargetWordCount") private var defaultTargetWordCount: Double = 50000
+    /// 新建项目时的默认每日写作目标字数
     @AppStorage("defaultDailyGoal") private var defaultDailyGoal: Double = 2000
     
     @Environment(\.dismiss) private var dismiss
@@ -15,6 +27,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // MARK: - 外观
                 Section("外观") {
                     Picker("主题", selection: $themeMode) {
                         Text("跟随系统").tag(0)
@@ -43,6 +56,7 @@ struct SettingsView: View {
                     Toggle("显示行号", isOn: $showLineNumbers)
                 }
                 
+                // MARK: - 编辑
                 Section("编辑") {
                     Toggle("打字机模式（光标居中）", isOn: $enableTypewriterMode)
                     
@@ -56,6 +70,7 @@ struct SettingsView: View {
                     }
                 }
                 
+                // MARK: - 默认目标
                 Section("默认目标") {
                     HStack {
                         Text("默认目标字数")
@@ -74,6 +89,7 @@ struct SettingsView: View {
                     }
                 }
                 
+                // MARK: - 关于
                 Section("关于") {
                     HStack {
                         Text("版本")

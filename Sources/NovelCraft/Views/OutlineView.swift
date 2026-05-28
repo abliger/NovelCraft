@@ -1,13 +1,15 @@
 import SwiftUI
 import SwiftData
 
+/// 大纲视图：展示项目的树形大纲结构，支持添加、编辑和删除节点
 struct OutlineView: View {
     @Environment(\.modelContext) private var modelContext
     let project: Project?
     
+    /// 是否正在添加新节点（用于控制新建节点弹窗）
     @State private var isAddingNode = false
-    @State private var selectedNode: OutlineNode?
     
+    /// 根节点列表：筛选出当前项目下没有父节点的大纲节点，并按 order 排序
     private var rootNodes: [OutlineNode] {
         (project?.outlineNodes ?? [])
             .filter { $0.parent == nil }
@@ -41,28 +43,31 @@ struct OutlineView: View {
                 .padding()
             }
         }
-        .sheet(item: $selectedNode) { node in
-            NodeEditView(project: project, node: node, parent: nil)
-        }
         .sheet(isPresented: $isAddingNode) {
             NodeEditView(project: project, node: nil, parent: nil)
         }
     }
     
+    /// 打开新建节点的弹窗
     private func addNode() {
         isAddingNode = true
     }
 }
 
+/// 大纲卡片视图：递归渲染单个大纲节点及其子节点，支持展开/收起和编辑操作
 struct OutlineCard: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable var node: OutlineNode
     let level: Int
     
+    /// 当前节点是否展开子节点
     @State private var isExpanded = true
+    /// 是否正在添加子节点（用于控制添加子节点弹窗）
     @State private var isAddingChild = false
+    /// 是否显示编辑弹窗
     @State private var showingEdit = false
     
+    /// 子节点列表：将当前节点的 children 按 order 排序
     private var children: [OutlineNode] {
         (node.children ?? []).sorted { $0.order < $1.order }
     }
@@ -119,7 +124,11 @@ struct OutlineCard: View {
                 .menuStyle(.borderlessButton)
             }
             .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            #if os(macOS)
+            .background(Color(nsColor: .controlBackgroundColor))
+            #else
+            .background(Color(.secondarySystemBackground))
+            #endif
             .cornerRadius(10)
             .padding(.leading, CGFloat(level * 20))
             
@@ -138,6 +147,7 @@ struct OutlineCard: View {
     }
 }
 
+/// 节点编辑视图：用于新建或编辑大纲节点，包含标题、类型和内容
 struct NodeEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -146,8 +156,11 @@ struct NodeEditView: View {
     let node: OutlineNode?
     let parent: OutlineNode?
     
+    /// 节点标题输入
     @State private var title = ""
+    /// 节点内容输入
     @State private var content = ""
+    /// 节点类型（card / chapter / plot / arc）
     @State private var nodeType = "card"
     
     var body: some View {
@@ -202,6 +215,7 @@ struct NodeEditView: View {
         }
     }
     
+    /// 保存节点：如果是编辑则更新现有节点，否则创建新节点并插入上下文
     private func save() {
         if let n = node {
             n.title = title

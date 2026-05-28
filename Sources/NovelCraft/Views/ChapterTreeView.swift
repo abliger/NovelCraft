@@ -1,15 +1,17 @@
 import SwiftUI
 import SwiftData
 
+/// 章节树形侧边栏视图，展示项目的卷/章节层级结构，支持增删改与排序。
 struct ChapterTreeView: View {
     @Environment(\.modelContext) private var modelContext
     let project: Project?
     @Binding var selectedChapter: Chapter?
     
-    @State private var isAddingVolume = false
-    @State private var newVolumeTitle = ""
+    @FocusState private var renameFocus: Bool
+    /// 记录当前展开的卷 ID 集合
     @State private var expandedVolumes: Set<UUID> = []
     
+    /// 按 order 排序后的卷列表
     private var sortedVolumes: [Volume] {
         (project?.volumes ?? []).sorted { $0.order < $1.order }
     }
@@ -53,6 +55,7 @@ struct ChapterTreeView: View {
         }
     }
     
+    /// 切换指定卷的展开/收起状态
     private func toggleVolume(_ id: UUID) {
         if expandedVolumes.contains(id) {
             expandedVolumes.remove(id)
@@ -61,6 +64,7 @@ struct ChapterTreeView: View {
         }
     }
     
+    /// 在当前项目中新建一个卷，并自动展开
     private func addVolume() {
         guard let project = project else { return }
         let order = sortedVolumes.count
@@ -71,6 +75,7 @@ struct ChapterTreeView: View {
         expandedVolumes.insert(volume.id)
     }
     
+    /// 在最后一个卷中新建一个章节
     private func addChapter() {
         guard let volume = sortedVolumes.last else { return }
         let order = (volume.chapters ?? []).count
@@ -82,6 +87,7 @@ struct ChapterTreeView: View {
     }
 }
 
+/// 卷分区视图，展示卷标题及下属章节列表，支持展开/收起、重命名与删除。
 struct VolumeSection: View {
     @Environment(\.modelContext) private var modelContext
     let volume: Volume
@@ -91,7 +97,9 @@ struct VolumeSection: View {
     
     @State private var isRenaming = false
     @State private var renameText = ""
+    @FocusState private var renameFocus: Bool
     
+    /// 按 order 排序后的章节列表
     private var sortedChapters: [Chapter] {
         (volume.chapters ?? []).sorted { $0.order < $1.order }
     }
@@ -128,6 +136,10 @@ struct VolumeSection: View {
                     })
                     .textFieldStyle(.plain)
                     .frame(maxWidth: 150)
+                    .focused($renameFocus)
+                    .onAppear {
+                        renameFocus = true
+                    }
                 } else {
                     Text(volume.title)
                         .font(.subheadline)
@@ -151,6 +163,11 @@ struct VolumeSection: View {
                     }
                     Divider()
                     Button("删除", role: .destructive) {
+                        for chapter in sortedChapters {
+                            if selectedChapter?.id == chapter.id {
+                                selectedChapter = nil
+                            }
+                        }
                         modelContext.delete(volume)
                         try? modelContext.save()
                     }
@@ -169,6 +186,7 @@ struct VolumeSection: View {
         }
     }
     
+    /// 在当前卷中新建章节
     private func addChapter() {
         let order = sortedChapters.count
         let chapter = Chapter(title: "第\(order + 1)章", order: order)
@@ -178,6 +196,7 @@ struct VolumeSection: View {
         selectedChapter = chapter
     }
     
+    /// 删除指定索引位置的章节
     private func deleteChapters(at indexSet: IndexSet) {
         for index in indexSet {
             let chapter = sortedChapters[index]
@@ -189,6 +208,7 @@ struct VolumeSection: View {
         try? modelContext.save()
     }
     
+    /// 移动章节顺序并更新 order 字段
     private func moveChapters(from source: IndexSet, to destination: Int) {
         var chapters = sortedChapters
         chapters.move(fromOffsets: source, toOffset: destination)
@@ -199,6 +219,7 @@ struct VolumeSection: View {
     }
 }
 
+/// 单行章节视图，展示章节标题、字数与状态标识，支持重命名、状态切换与删除。
 struct ChapterRow: View {
     @Environment(\.modelContext) private var modelContext
     let chapter: Chapter
@@ -206,6 +227,7 @@ struct ChapterRow: View {
     
     @State private var isRenaming = false
     @State private var renameText = ""
+    @FocusState private var renameFocus: Bool
     
     var body: some View {
         HStack(spacing: 8) {
@@ -221,6 +243,10 @@ struct ChapterRow: View {
                     isRenaming = false
                 })
                 .textFieldStyle(.plain)
+                .focused($renameFocus)
+                .onAppear {
+                    renameFocus = true
+                }
             } else {
                 Text(chapter.title)
                     .lineLimit(1)
@@ -234,7 +260,7 @@ struct ChapterRow: View {
             
             Menu {
                 ForEach(ChapterStatus.allCases, id: \.self) { status in
-                    Button(status.rawValue) {
+                    Button(status.displayName) {
                         chapter.chapterStatus = status
                         chapter.updatedAt = Date()
                         try? modelContext.save()
@@ -278,6 +304,7 @@ struct ChapterRow: View {
         }
     }
     
+    /// 根据章节状态返回对应的标识颜色
     private var statusColor: Color {
         switch chapter.chapterStatus {
         case .draft: return .gray
