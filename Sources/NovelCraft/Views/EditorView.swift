@@ -77,6 +77,13 @@ struct EditorView: View {
                 debouncedSave()
             }
         }
+        .task(id: chapter.id) {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled else { return }
+                FileSyncEngine.syncChapterToDisk(chapter, project: project)
+            }
+        }
     }
     
     /// 延迟保存，避免每次按键都触发数据库写入
