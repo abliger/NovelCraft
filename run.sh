@@ -6,6 +6,9 @@ set -e
 
 cd "$(dirname "$0")"
 
+# 确保使用 Xcode 工具链（SwiftData 宏需要完整 Xcode 的编译器插件）
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+
 echo "🔨 构建 NovelCraft..."
 if ! swift build; then
     echo "❌ 构建失败，请检查编译错误"
