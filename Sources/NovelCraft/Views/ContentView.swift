@@ -171,6 +171,7 @@ struct ContentView: View {
                 project: project,
                 chapter: chapter
             )
+            .id(chapter.id)
         } else {
             EmptyEditorView(project: selectedProject)
         }

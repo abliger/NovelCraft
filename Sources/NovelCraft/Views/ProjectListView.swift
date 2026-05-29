@@ -76,8 +76,14 @@ struct ProjectListView: View {
                 isShowingNewProject = true
             } label: {
                 Label("新建项目", systemImage: "plus")
+                    .fontWeight(.medium)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.accentColor)
+            .foregroundColor(.white)
+            .cornerRadius(6)
         }
         .padding()
     }
@@ -147,7 +153,7 @@ struct ProjectCard: View {
     }
 }
 
-/// 新建项目弹窗，收集小说名称、作者、简介与写作目标。
+/// 新建项目弹窗，收集小说名称、作者、简介、封面、存储位置与写作目标。
 struct NewProjectView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -155,6 +161,8 @@ struct NewProjectView: View {
     @State private var title = ""
     @State private var author = ""
     @State private var summary = ""
+    @State private var coverImageData: Data? = nil
+    @State private var storagePath: String? = nil
     @State private var targetWordCount = 50000
     @State private var dailyWordGoal = 2000
     
@@ -173,21 +181,86 @@ struct NewProjectView: View {
             
             Divider()
             
-            Form {
-                Section("基本信息") {
-                    TextField("小说名称", text: $title)
-                    TextField("作者", text: $author)
-                    TextEditor(text: $summary)
-                        .frame(height: 80)
+            ScrollView {
+                Form {
+                    #if os(macOS)
+                    Section("封面") {
+                        HStack(spacing: 12) {
+                            if let coverImageData, let nsImage = NSImage(data: coverImageData) {
+                                Image(nsImage: nsImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            } else {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.secondary.opacity(0.15))
+                                    .frame(width: 60, height: 60)
+                                    .overlay(
+                                        Image(systemName: "photo")
+                                            .foregroundStyle(.secondary)
+                                    )
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Button("选择封面") {
+                                    selectImageFile { data in
+                                        if let data { coverImageData = data }
+                                    }
+                                }
+                                if coverImageData != nil {
+                                    Button("清除封面") {
+                                        coverImageData = nil
+                                    }
+                                    .foregroundColor(.red)
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    #endif
+                    
+                    Section("基本信息") {
+                        TextField("小说名称", text: $title)
+                        TextField("作者", text: $author)
+                        TextEditor(text: $summary)
+                            .frame(height: 60)
+                    }
+                    
+                    #if os(macOS)
+                    Section("存储位置") {
+                        HStack {
+                            Text(storagePath ?? "使用默认位置")
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .foregroundStyle(storagePath == nil ? .secondary : .primary)
+                            Spacer()
+                            HStack(spacing: 8) {
+                                Button(storagePath == nil ? "选择位置" : "更改") {
+                                    selectStorageDirectory { path in
+                                        if let path { storagePath = path }
+                                    }
+                                }
+                                if storagePath != nil {
+                                    Button("恢复默认") {
+                                        storagePath = nil
+                                    }
+                                    .foregroundColor(.red)
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    #endif
+                    
+                    Section("写作目标") {
+                        Stepper("目标字数: \(targetWordCount)", value: $targetWordCount, step: 5000)
+                        Stepper("每日目标: \(dailyWordGoal)", value: $dailyWordGoal, step: 500)
+                    }
                 }
-                
-                Section("写作目标") {
-                    Stepper("目标字数: \(targetWordCount)", value: $targetWordCount, step: 5000)
-                    Stepper("每日目标: \(dailyWordGoal)", value: $dailyWordGoal, step: 500)
-                }
+                .formStyle(.grouped)
+                .padding()
             }
-            .formStyle(.grouped)
-            .padding()
             
             Spacer()
             
@@ -198,6 +271,8 @@ struct NewProjectView: View {
                         title: title.isEmpty ? "未命名小说" : title,
                         author: author,
                         summary: summary,
+                        coverImageData: coverImageData,
+                        storagePath: storagePath,
                         targetWordCount: targetWordCount,
                         dailyWordGoal: dailyWordGoal
                     )
@@ -221,9 +296,41 @@ struct NewProjectView: View {
             }
             .padding()
         }
-        .frame(width: 450, height: 400)
+        .frame(minWidth: 450, idealWidth: 450, minHeight: 400, idealHeight: 520)
     }
 }
+
+#if os(macOS)
+import AppKit
+
+/// 打开文件选择器选择图片文件
+func selectImageFile(completion: @escaping (Data?) -> Void) {
+    let panel = NSOpenPanel()
+    panel.allowsMultipleSelection = false
+    panel.canChooseDirectories = false
+    panel.canChooseFiles = true
+    panel.allowedContentTypes = [.image]
+    if panel.runModal() == .OK, let url = panel.url {
+        completion(try? Data(contentsOf: url))
+    } else {
+        completion(nil)
+    }
+}
+
+/// 打开文件夹选择器选择存储目录
+func selectStorageDirectory(completion: @escaping (String?) -> Void) {
+    let panel = NSOpenPanel()
+    panel.allowsMultipleSelection = false
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.prompt = "选择"
+    if panel.runModal() == .OK, let url = panel.url {
+        completion(url.path)
+    } else {
+        completion(nil)
+    }
+}
+#endif
 
 /// 通用搜索输入框，带清除按钮。
 struct SearchField: View {

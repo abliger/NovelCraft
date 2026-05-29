@@ -14,6 +14,8 @@ final class Project {
     var summary: String
     /// 封面图片的二进制数据（可选）
     var coverImageData: Data?
+    /// 用户自定义的项目存储路径（macOS 上用于指定工作目录）
+    var storagePath: String?
     /// 创建时间
     var createdAt: Date
     /// 最后更新时间
@@ -48,6 +50,7 @@ final class Project {
         author: String = "",
         summary: String = "",
         coverImageData: Data? = nil,
+        storagePath: String? = nil,
         targetWordCount: Int = 50000,
         dailyWordGoal: Int = 2000
     ) {
@@ -56,6 +59,7 @@ final class Project {
         self.author = author
         self.summary = summary
         self.coverImageData = coverImageData
+        self.storagePath = storagePath
         self.createdAt = Date()
         self.updatedAt = Date()
         self.targetWordCount = targetWordCount

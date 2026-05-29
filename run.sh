@@ -6,6 +6,13 @@ set -e
 
 cd "$(dirname "$0")"
 
+# 若 NovelCraft 正在运行，先退出旧实例以确保重新加载最新代码
+if pgrep -x "NovelCraft" > /dev/null 2>&1; then
+    echo "🛑 正在退出已运行的 NovelCraft..."
+    killall NovelCraft
+    sleep 1
+fi
+
 # 确保使用 Xcode 工具链（SwiftData 宏需要完整 Xcode 的编译器插件）
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
@@ -34,6 +41,8 @@ cp "$BUILT_EXE" "$EXE_PATH"
 
 # 复制依赖的 Bundle 资源（如隐私清单）
 find .build -name "*.bundle" -type d | while read -r bundle; do
+    bundle_name=$(basename "$bundle")
+    rm -rf "$RESOURCES_PATH/$bundle_name"
     cp -R "$bundle" "$RESOURCES_PATH/"
 done
 
