@@ -93,10 +93,13 @@ struct ContentView: View {
                 .help("返回项目列表")
             }
             
-            ToolbarItem {
+            ToolbarItem(placement: .principal) {
                 if let project = selectedProject {
                     Text(project.title)
                         .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 280)
                 }
             }
             

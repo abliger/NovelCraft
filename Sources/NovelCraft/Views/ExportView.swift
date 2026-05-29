@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// 导出格式枚举，支持 Markdown、纯文本、PDF 与 EPUB 四种格式。
 enum ExportFormat: String, CaseIterable {
@@ -123,12 +126,24 @@ struct ExportView: View {
             let scope: ExportScope = exportScope == 0 ? .chapter : .fullProject
             
             do {
-                let url = try engine.export(format: selectedFormat, scope: scope, includeMetadata: includeMetadata)
+                let tempURL = try engine.export(format: selectedFormat, scope: scope, includeMetadata: includeMetadata)
+                
+                #if os(macOS)
+                let savedURL = await showSavePanel(tempURL: tempURL)
                 await MainActor.run {
-                    exportURL = url
+                    if let savedURL = savedURL {
+                        exportURL = savedURL
+                        showSuccess = true
+                    }
+                    isExporting = false
+                }
+                #else
+                await MainActor.run {
+                    exportURL = tempURL
                     showSuccess = true
                     isExporting = false
                 }
+                #endif
             } catch {
                 await MainActor.run {
                     exportError = error.localizedDescription
@@ -137,4 +152,30 @@ struct ExportView: View {
             }
         }
     }
+    
+    #if os(macOS)
+    /// 弹出 NSSavePanel 让用户选择导出文件的保存位置。
+    @MainActor
+    private func showSavePanel(tempURL: URL) async -> URL? {
+        await withCheckedContinuation { continuation in
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = tempURL.lastPathComponent
+            panel.canCreateDirectories = true
+            
+            if panel.runModal() == .OK, let destinationURL = panel.url {
+                do {
+                    if FileManager.default.fileExists(atPath: destinationURL.path) {
+                        try FileManager.default.removeItem(at: destinationURL)
+                    }
+                    try FileManager.default.copyItem(at: tempURL, to: destinationURL)
+                    continuation.resume(returning: destinationURL)
+                } catch {
+                    continuation.resume(returning: nil)
+                }
+            } else {
+                continuation.resume(returning: nil)
+            }
+        }
+    }
+    #endif
 }
