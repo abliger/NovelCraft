@@ -47,22 +47,30 @@ actor MarkdownAsyncEngine {
         // 渲染在主线程进行（AttributedString 操作轻量）
         return MarkdownRenderer.render(ast)
     }
+    
+    /// 异步解析并将 AST 渲染为完整 HTML 页面，用于 WebView 预览
+    func renderHTML(_ text: String, baseURL: URL? = nil) async -> String {
+        let ast = await parse(text)
+        return HTMLRenderer.renderFullPage(ast, baseURL: baseURL)
+    }
 
     /// 批量解析多个 Markdown 文件（例如导出时的全文解析）
     func parseFiles(_ contents: [String]) async -> [MDNode] {
-        await withTaskGroup(of: MDNode.self) { group in
-            for content in contents {
+        await withTaskGroup(of: (Int, MDNode).self) { group in
+            for (index, content) in contents.enumerated() {
                 group.addTask {
                     var parser = MarkdownBlockParser(text: content)
-                    return parser.parse()
+                    return (index, parser.parse())
                 }
             }
 
-            var results: [MDNode] = []
-            for await node in group {
-                results.append(node)
+            var results: [(Int, MDNode)] = []
+            for await result in group {
+                results.append(result)
             }
-            return results
+            // 按原始输入顺序排序
+            results.sort { $0.0 < $1.0 }
+            return results.map { $0.1 }
         }
     }
 }
@@ -94,5 +102,10 @@ enum MarkdownParser {
     /// 异步渲染为 AttributedString
     static func attributedStringAsync(from text: String) async -> AttributedString {
         await asyncEngine.renderAttributedString(text)
+    }
+    
+    /// 异步渲染为完整 HTML 页面
+    static func htmlAsync(from text: String, baseURL: URL? = nil) async -> String {
+        await asyncEngine.renderHTML(text, baseURL: baseURL)
     }
 }

@@ -40,13 +40,12 @@ class ProjectRegistry {
         lock.lock()
         defer { lock.unlock() }
         guard let data = try? JSONEncoder().encode(projects) else { return }
-        let tempURL = registryURL.appendingPathExtension("tmp")
+        let tempURL = registryURL.deletingLastPathComponent()
+            .appendingPathComponent("projects_" + UUID().uuidString + ".tmp")
         do {
             try data.write(to: tempURL)
-            if FileManager.default.fileExists(atPath: registryURL.path) {
-                try FileManager.default.removeItem(at: registryURL)
-            }
-            try FileManager.default.moveItem(at: tempURL, to: registryURL)
+            // 使用 replaceItemAt 实现原子替换，避免 remove + move 中间出现 crash 导致数据丢失
+            let _ = try FileManager.default.replaceItemAt(registryURL, withItemAt: tempURL)
         } catch {
             try? FileManager.default.removeItem(at: tempURL)
         }

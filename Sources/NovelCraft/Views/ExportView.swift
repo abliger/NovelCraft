@@ -120,34 +120,43 @@ struct ExportView: View {
     private func export() {
         isExporting = true
         exportError = nil
+        showSuccess = false
         
-        Task {
-            let engine = ExportEngine(project: project, chapter: chapter)
-            let scope: ExportScope = exportScope == 0 ? .chapter : .fullProject
+        // 捕获所有需要的值，避免在 detached task 中跨 actor 访问属性
+        let capturedProject = project
+        let capturedChapter = chapter
+        let capturedFormat = selectedFormat
+        let capturedScope = exportScope == 0 ? ExportScope.chapter : ExportScope.fullProject
+        let capturedIncludeMetadata = includeMetadata
+        
+        Task.detached(priority: .userInitiated) {
+            let engine = ExportEngine(project: capturedProject, chapter: capturedChapter)
             
             do {
-                let tempURL = try engine.export(format: selectedFormat, scope: scope, includeMetadata: includeMetadata)
+                let tempURL = try engine.export(format: capturedFormat, scope: capturedScope, includeMetadata: capturedIncludeMetadata)
                 
                 #if os(macOS)
-                let savedURL = await showSavePanel(tempURL: tempURL)
+                let savedURL = await self.showSavePanel(tempURL: tempURL)
+                // 无论保存成功与否，删除临时文件
+                try? FileManager.default.removeItem(at: tempURL)
                 await MainActor.run {
                     if let savedURL = savedURL {
-                        exportURL = savedURL
-                        showSuccess = true
+                        self.exportURL = savedURL
+                        self.showSuccess = true
                     }
-                    isExporting = false
+                    self.isExporting = false
                 }
                 #else
                 await MainActor.run {
-                    exportURL = tempURL
-                    showSuccess = true
-                    isExporting = false
+                    self.exportURL = tempURL
+                    self.showSuccess = true
+                    self.isExporting = false
                 }
                 #endif
             } catch {
                 await MainActor.run {
-                    exportError = error.localizedDescription
-                    isExporting = false
+                    self.exportError = error.localizedDescription
+                    self.isExporting = false
                 }
             }
         }

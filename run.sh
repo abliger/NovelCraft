@@ -44,6 +44,11 @@ if [ -f "NovelCraft.icns" ]; then
     cp "NovelCraft.icns" "$RESOURCES_PATH/"
 fi
 
+# 复制预览所需的 JS 库（MathJax / Mermaid / abcjs）
+if [ -d "Resources/js" ]; then
+    cp -R "Resources/js" "$RESOURCES_PATH/"
+fi
+
 # 复制依赖的 Bundle 资源（如隐私清单）
 find .build -name "*.bundle" -type d | while read -r bundle; do
     bundle_name=$(basename "$bundle")

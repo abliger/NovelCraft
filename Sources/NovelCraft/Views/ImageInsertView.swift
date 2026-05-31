@@ -177,6 +177,9 @@ struct ImageInsertView: View {
                 errorMessage = "选择的文件不是支持的图片格式"
                 return
             }
+            // security-scoped resource 访问
+            let isAccessing = url.startAccessingSecurityScopedResource()
+            defer { if isAccessing { url.stopAccessingSecurityScopedResource() } }
             let path = await ImageAssetEngine.processImage(url: url, project: project, mode: mode)
             let markdown = "![\(finalAlt)](\(path))"
             onInsert(markdown)

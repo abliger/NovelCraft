@@ -15,6 +15,11 @@ enum ImageAssetEngine {
     /// 返回项目的图片资源目录 URL（storagePath/assets/images/）
     static func assetsDirectory(for project: Project) -> URL {
         let baseURL = URL(fileURLWithPath: project.storagePath)
+        let resolved = baseURL.resolvingSymlinksInPath().path
+        // 拒绝包含 .. 组件的路径，防止路径遍历
+        if resolved.contains("/..") || resolved.hasSuffix("/..") || resolved == ".." {
+            fatalError("非法存储路径: \(project.storagePath)")
+        }
         return baseURL.appendingPathComponent("assets/images", isDirectory: true)
     }
     

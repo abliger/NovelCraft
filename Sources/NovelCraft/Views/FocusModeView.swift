@@ -26,6 +26,8 @@ struct FocusModeView: View {
     @State private var lineWidth: CGFloat = 700
     /// 自动保存任务（用于 debounce）
     @State private var saveTask: Task<Void, Never>?
+    /// 固定计时器发布者，避免每次 body 评估都创建新实例
+    private let timerPublisher = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     /// 当前字体大小
     private var fontSize: CGFloat {
@@ -140,7 +142,7 @@ struct FocusModeView: View {
             saveTask?.cancel()
             try? modelContext.save()
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+        .onReceive(timerPublisher) { _ in
             if isTimerRunning {
                 timerSeconds += 1
             }
@@ -150,9 +152,15 @@ struct FocusModeView: View {
     /// 延迟保存，避免每次按键都触发数据库写入
     private func debouncedSave() {
         saveTask?.cancel()
+        let capturedChapterID = chapter.id
+        let capturedText = editorText
         saveTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
+            // 防竞态：若章节已切换则跳过
+            guard chapter.id == capturedChapterID else { return }
+            // 同步块引用记录（与 EditorView 保持一致）
+            BlockRefEngine.syncRefs(sourceBlockID: capturedChapterID, content: capturedText, context: modelContext)
             try? modelContext.save()
         }
     }

@@ -7,10 +7,10 @@ struct FileSyncEngine {
     static func syncChapterToDisk(_ chapter: Chapter, project: Project) {
         let storagePath = project.storagePath
         
-        // 验证路径安全性：禁止路径中包含 .. 组件
+        // 验证路径安全性：禁止路径中包含 .. 组件，并拒绝相对路径
         let url = URL(fileURLWithPath: storagePath)
-        let standardized = url.standardizedFileURL.path
-        if standardized != url.path, url.pathComponents.contains("..") {
+        let resolved = url.resolvingSymlinksInPath().path
+        if resolved.contains("/..") || resolved.hasSuffix("/..") || resolved == ".." {
             print("文件同步失败: 路径包含非法组件 \(storagePath)")
             return
         }
@@ -18,11 +18,13 @@ struct FileSyncEngine {
         guard let volume = chapter.volume else { return }
         
         let sanitizedVolume = sanitizeFileName(volume.title)
+        // 章节文件名加入 UUID 前缀以避免同名冲突
         let sanitizedChapter = sanitizeFileName(chapter.title)
+        let fileName = "\(sanitizedChapter)_\(chapter.id.uuidString.prefix(8)).md"
         
         let baseURL = URL(fileURLWithPath: storagePath)
         let volumeURL = baseURL.appendingPathComponent(sanitizedVolume)
-        let fileURL = volumeURL.appendingPathComponent("\(sanitizedChapter).md")
+        let fileURL = volumeURL.appendingPathComponent(fileName)
         
         do {
             try FileManager.default.createDirectory(

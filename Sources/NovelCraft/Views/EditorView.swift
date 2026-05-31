@@ -28,8 +28,8 @@ struct EditorView: View {
     @State private var saveTask: Task<Void, Never>?
     /// 预览更新任务（用于取消旧任务）
     @State private var previewTask: Task<Void, Never>?
-    /// 缓存的 Markdown 预览富文本
-    @State private var cachedPreview: AttributedString = AttributedString("")
+    /// 缓存的 Markdown 预览 HTML
+    @State private var cachedPreviewHTML: String = ""
     /// 是否显示内容块搜索面板
     @State private var showBlockSearch = false
     /// 是否显示反向链接面板
@@ -38,8 +38,6 @@ struct EditorView: View {
     @State private var forwardRefs: [ContentBlockRef] = []
     /// 是否显示图片插入面板
     @State private var showImageInsert = false
-    /// 是否正在拖放图片悬停
-    @State private var isDropTarget = false
     /// 图片处理方式（从设置读取）
     @AppStorage("imageHandlingMode") private var imageHandlingMode = 1
     /// 是否允许下载网络图片
@@ -75,11 +73,12 @@ struct EditorView: View {
                 // 主编辑/预览区域
                 ZStack {
                     if isPreviewMode {
-                        ScrollView {
-                            Text(cachedPreview)
-                                .padding()
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                        PreviewWebView(
+                            htmlString: cachedPreviewHTML,
+                            baseURL: URL(fileURLWithPath: project.storagePath)
+                        )
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         TextEditor(text: $editorText)
                             .font(.system(size: fontSize))
@@ -114,6 +113,10 @@ struct EditorView: View {
             updatePreview()
             loadForwardRefs()
         }
+        .onDisappear {
+            saveTask?.cancel()
+            previewTask?.cancel()
+        }
         .onChange(of: chapter.id) { _, _ in
             editorText = chapter.content
             updatePreview()
@@ -147,8 +150,8 @@ struct EditorView: View {
         .dropDestination(for: URL.self) { urls, location in
             Task { await handleDroppedURLs(urls) }
             return true
-        } isTargeted: { targeted in
-            isDropTarget = targeted
+        } isTargeted: { _ in
+            // 拖放悬停状态可在此添加视觉反馈
         }
         #endif
     }
@@ -156,16 +159,20 @@ struct EditorView: View {
     /// 延迟保存，避免每次按键都触发数据库写入
     private func debouncedSave() {
         saveTask?.cancel()
+        let capturedChapterID = chapter.id
+        let capturedText = editorText
         saveTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            syncRefsAndSave()
+            // 防竞态：若章节已切换则跳过本次保存
+            guard chapter.id == capturedChapterID else { return }
+            syncRefsAndSave(chapterID: capturedChapterID, text: capturedText)
         }
     }
     
     /// 同步引用记录并保存数据库
-    private func syncRefsAndSave() {
-        BlockRefEngine.syncRefs(sourceBlockID: chapter.id, content: editorText, context: modelContext)
+    private func syncRefsAndSave(chapterID: UUID, text: String) {
+        BlockRefEngine.syncRefs(sourceBlockID: chapterID, content: text, context: modelContext)
         try? modelContext.save()
         loadForwardRefs()
     }
@@ -181,7 +188,10 @@ struct EditorView: View {
         if isEmbed {
             syntax = "\n{{\(targetID.uuidString)}}\n"
         } else {
-            let safeTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
+            // 转义锚文本中的特殊字符：")" 和 "\"
+            var safeTitle = title.replacingOccurrences(of: "\\", with: "\\\\")
+            safeTitle = safeTitle.replacingOccurrences(of: "\"", with: "\\\"")
+            safeTitle = safeTitle.replacingOccurrences(of: ")", with: "\\)")
             syntax = "\n((\(targetID.uuidString) \"\(safeTitle)\"))\n"
         }
         editorText += syntax
@@ -221,9 +231,9 @@ struct EditorView: View {
     private func updatePreview() {
         previewTask?.cancel()
         previewTask = Task {
-            let preview = await MarkdownParser.attributedStringAsync(from: editorText)
+            let preview = await MarkdownParser.htmlAsync(from: editorText, baseURL: URL(fileURLWithPath: project.storagePath))
             guard !Task.isCancelled else { return }
-            cachedPreview = preview
+            cachedPreviewHTML = preview
         }
     }
     

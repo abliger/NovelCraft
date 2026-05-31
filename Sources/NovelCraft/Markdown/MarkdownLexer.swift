@@ -62,9 +62,9 @@ struct MarkdownLexer {
     private mutating func nextToken() -> MDToken {
         guard index < input.endIndex else { return .eof }
 
-        // 换行符
+        // 换行符（支持 \n、\r、\r\n）
         let char = input[index]
-        if char == "\n" || char == "\r\n" {
+        if char == "\n" || char == "\r" {
             advance()
             if char == "\r", index < input.endIndex, input[index] == "\n" {
                 advance() // \r\n

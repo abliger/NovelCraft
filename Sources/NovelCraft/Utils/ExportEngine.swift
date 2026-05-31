@@ -126,12 +126,17 @@ struct ExportEngine {
     /// 去除 Markdown 标记符号，转换为纯文本。
     private func stripMarkdown(_ text: String) -> String {
         var result = text
-        result = result.replacingOccurrences(of: "# ", with: "")
-        result = result.replacingOccurrences(of: "## ", with: "")
-        result = result.replacingOccurrences(of: "```", with: "")
-        result = result.replacingOccurrences(of: "> ", with: "")
-        result = result.replacingOccurrences(of: "- ", with: "• ")
-        result = result.replacingOccurrences(of: "---", with: "")
+        // 使用行首锚定，避免破坏正文中的合法字符组合
+        result = result.replacingOccurrences(of: "^# ", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^## ", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^### ", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^#### ", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^##### ", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^###### ", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^```\\s*$", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^> ", with: "", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^- ", with: "• ", options: .regularExpression)
+        result = result.replacingOccurrences(of: "^---\\s*$", with: "", options: .regularExpression)
         // 精确移除 Markdown 粗体/斜体标记，避免破坏非 Markdown 星号内容
         result = result.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "$1", options: .regularExpression)
         result = result.replacingOccurrences(of: "\\*(.+?)\\*", with: "$1", options: .regularExpression)
@@ -307,6 +312,13 @@ struct ExportEngine {
         let archive = try Archive(url: destination, accessMode: .create)
         
         let fileManager = FileManager.default
+        
+        // EPUB 规范要求 mimetype 必须是 ZIP 中的第一个文件且未压缩
+        let mimetypeURL = source.appendingPathComponent("mimetype")
+        if fileManager.fileExists(atPath: mimetypeURL.path) {
+            try archive.addEntry(with: "mimetype", relativeTo: source, compressionMethod: .none)
+        }
+        
         let enumerator = fileManager.enumerator(
             at: source,
             includingPropertiesForKeys: [.isRegularFileKey],
@@ -320,15 +332,31 @@ struct ExportEngine {
             guard fileComponents.count > sourceComponents.count else { continue }
             let relativeComponents = Array(fileComponents[sourceComponents.count...])
             let relativePath = relativeComponents.joined(separator: "/")
-            guard !relativePath.isEmpty else { continue }
-            let compression: CompressionMethod = relativePath == "mimetype" ? .none : .deflate
-            try archive.addEntry(with: relativePath, relativeTo: source, compressionMethod: compression)
+            guard !relativePath.isEmpty, relativePath != "mimetype" else { continue }
+            try archive.addEntry(with: relativePath, relativeTo: source, compressionMethod: .deflate)
         }
     }
     
     /// 将简易 Markdown 转换为 HTML，支持标题、粗体、斜体、代码块、引用与列表。
     private func convertToHTML(_ markdown: String) -> String {
-        var html = escapeHTML(markdown)
+        var html = markdown
+        
+        // 1. 先处理块引用和嵌入（在 escapeHTML 之前，避免引号被转义）
+        // 块引用 ((id "锚文本")) -> 锚文本
+        if let refPattern = try? NSRegularExpression(pattern: #"\(\(([^)]+)\"([^\"]+)\"\)\)"#, options: []) {
+            let matches = refPattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
+            for match in matches.reversed() {
+                let anchor = (html as NSString).substring(with: match.range(at: 2))
+                html = (html as NSString).replacingCharacters(in: match.range, with: escapeHTML(anchor))
+            }
+        }
+        // 块引用 ((id)) -> [引用]
+        html = html.replacingOccurrences(of: #"\(\([^)]+\)\)"#, with: "<span style=\"color:purple\">[引用]</span>", options: .regularExpression)
+        // 块嵌入 {{id}} -> [嵌入]
+        html = html.replacingOccurrences(of: #"\{\{[^}]+\}\}"#, with: "<span style=\"color:blue\">[嵌入]</span>", options: .regularExpression)
+        
+        // 2. 再对剩余文本进行 HTML 转义
+        html = escapeHTML(html)
         
         let headingPattern = try? NSRegularExpression(pattern: "^(#{1,6})\\s+(.+)$", options: .anchorsMatchLines)
         if let pattern = headingPattern {
@@ -343,19 +371,6 @@ struct ExportEngine {
         
         html = html.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "<strong>$1</strong>", options: .regularExpression)
         html = html.replacingOccurrences(of: "\\*(.+?)\\*", with: "<em>$1</em>", options: .regularExpression)
-        
-        // 块引用 ((id "锚文本")) -> 锚文本
-        if let refPattern = try? NSRegularExpression(pattern: #"\(\(([^)]+)\"([^\"]+)\"\)\)"#, options: []) {
-            let matches = refPattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
-            for match in matches.reversed() {
-                let anchor = (html as NSString).substring(with: match.range(at: 2))
-                html = (html as NSString).replacingCharacters(in: match.range, with: escapeHTML(anchor))
-            }
-        }
-        // 块引用 ((id)) -> [引用]
-        html = html.replacingOccurrences(of: #"\(\([^)]+\)\)"#, with: "<span style=\"color:purple\">[引用]</span>", options: .regularExpression)
-        // 块嵌入 {{id}} -> [嵌入]
-        html = html.replacingOccurrences(of: #"\{\{[^}]+\}\}"#, with: "<span style=\"color:blue\">[嵌入]</span>", options: .regularExpression)
         
         let codePattern = try? NSRegularExpression(pattern: "```(.+?)```", options: .dotMatchesLineSeparators)
         if let pattern = codePattern {

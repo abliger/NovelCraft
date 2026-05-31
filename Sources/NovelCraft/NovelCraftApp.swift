@@ -28,7 +28,7 @@ struct NovelCraftApp: App {
             queue: .main
         ) { notification in
             guard let moc = notification.object as? NSManagedObjectContext else { return }
-            for object in moc.registeredObjects where object.hasChanges {
+            for object in moc.registeredObjects where object.hasChanges && !object.isDeleted {
                 if object.entity.attributesByName["updatedAt"] != nil {
                     object.setValue(Date(), forKey: "updatedAt")
                 }

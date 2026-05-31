@@ -118,6 +118,7 @@ struct ContentView: View {
                 self.currentProject = project
             } else {
                 // 数据库中不存在 Project 记录（异常情况），新建一个
+                // 使用注册表中的 UUID，避免数据库与注册表 ID 不一致
                 let newProject = Project(
                     title: meta.title,
                     author: meta.author,
@@ -126,6 +127,7 @@ struct ContentView: View {
                     targetWordCount: meta.targetWordCount,
                     dailyWordGoal: meta.dailyWordGoal
                 )
+                newProject.id = meta.id
                 context.insert(newProject)
                 try context.save()
                 self.projectContainer = container

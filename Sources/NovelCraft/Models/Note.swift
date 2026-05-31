@@ -11,7 +11,13 @@ final class Note {
     /// 便签内容
     var content: String
     /// 颜色标识名称（仅接受预定义值）
-    var color: String
+    var color: String {
+        didSet {
+            if !Note.validColors.contains(color) {
+                color = "yellow"
+            }
+        }
+    }
     /// 创建时间
     var createdAt: Date
     /// 最后更新时间
