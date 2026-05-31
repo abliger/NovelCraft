@@ -20,6 +20,8 @@ struct ProjectMeta: Codable, Identifiable {
 class ProjectRegistry {
     static let shared = ProjectRegistry()
 
+    private let lock = NSRecursiveLock()
+
     private var registryURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let dir = appSupport.appendingPathComponent("NovelCraft", isDirectory: true)
@@ -28,23 +30,43 @@ class ProjectRegistry {
     }
 
     func loadProjects() -> [ProjectMeta] {
+        lock.lock()
+        defer { lock.unlock() }
         guard let data = try? Data(contentsOf: registryURL) else { return [] }
         return (try? JSONDecoder().decode([ProjectMeta].self, from: data)) ?? []
     }
 
     func saveProjects(_ projects: [ProjectMeta]) {
-        if let data = try? JSONEncoder().encode(projects) {
-            try? data.write(to: registryURL)
+        lock.lock()
+        defer { lock.unlock() }
+        guard let data = try? JSONEncoder().encode(projects) else { return }
+        let tempURL = registryURL.appendingPathExtension("tmp")
+        do {
+            try data.write(to: tempURL)
+            if FileManager.default.fileExists(atPath: registryURL.path) {
+                try FileManager.default.removeItem(at: registryURL)
+            }
+            try FileManager.default.moveItem(at: tempURL, to: registryURL)
+        } catch {
+            try? FileManager.default.removeItem(at: tempURL)
         }
     }
 
     func addProject(_ project: ProjectMeta) {
+        lock.lock()
+        defer { lock.unlock() }
         var projects = loadProjects()
-        projects.append(project)
+        if let index = projects.firstIndex(where: { $0.id == project.id }) {
+            projects[index] = project
+        } else {
+            projects.append(project)
+        }
         saveProjects(projects)
     }
 
     func updateProject(_ project: ProjectMeta) {
+        lock.lock()
+        defer { lock.unlock() }
         var projects = loadProjects()
         if let index = projects.firstIndex(where: { $0.id == project.id }) {
             projects[index] = project
@@ -53,12 +75,16 @@ class ProjectRegistry {
     }
 
     func deleteProject(id: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
         var projects = loadProjects()
         projects.removeAll { $0.id == id }
         saveProjects(projects)
     }
 
     func project(withID id: UUID) -> ProjectMeta? {
+        lock.lock()
+        defer { lock.unlock() }
         return loadProjects().first { $0.id == id }
     }
 }

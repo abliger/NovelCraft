@@ -163,6 +163,7 @@ struct SettingEditView: View {
                     ToolbarItem(placement: .destructiveAction) {
                         Button("删除", role: .destructive) {
                             if let s = setting {
+                                BlockRefEngine.deleteRefs(for: s.id, context: modelContext)
                                 modelContext.delete(s)
                                 try? modelContext.save()
                             }

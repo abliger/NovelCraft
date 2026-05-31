@@ -167,7 +167,9 @@ struct VolumeSection: View {
                             if selectedChapter?.id == chapter.id {
                                 selectedChapter = nil
                             }
+                            BlockRefEngine.deleteRefs(for: chapter.id, context: modelContext)
                         }
+                        BlockRefEngine.deleteRefs(for: volume.id, context: modelContext)
                         modelContext.delete(volume)
                         try? modelContext.save()
                     }
@@ -203,6 +205,7 @@ struct VolumeSection: View {
             if selectedChapter?.id == chapter.id {
                 selectedChapter = nil
             }
+            BlockRefEngine.deleteRefs(for: chapter.id, context: modelContext)
             modelContext.delete(chapter)
         }
         try? modelContext.save()
@@ -275,6 +278,7 @@ struct ChapterRow: View {
                     if selectedChapter?.id == chapter.id {
                         selectedChapter = nil
                     }
+                    BlockRefEngine.deleteRefs(for: chapter.id, context: modelContext)
                     modelContext.delete(chapter)
                     try? modelContext.save()
                 }
@@ -298,6 +302,7 @@ struct ChapterRow: View {
                 if selectedChapter?.id == chapter.id {
                     selectedChapter = nil
                 }
+                BlockRefEngine.deleteRefs(for: chapter.id, context: modelContext)
                 modelContext.delete(chapter)
                 try? modelContext.save()
             }

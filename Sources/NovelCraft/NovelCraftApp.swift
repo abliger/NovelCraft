@@ -13,6 +13,11 @@ struct NovelCraftApp: App {
             ContentView()
                 .applyTheme()
         }
+        #if os(macOS)
+        Settings {
+            SettingsView()
+        }
+        #endif
     }
     
     /// 注册 Core Data 保存前通知，自动更新所有带 `updatedAt` 字段的模型对象。

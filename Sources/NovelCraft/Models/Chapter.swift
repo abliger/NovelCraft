@@ -29,8 +29,13 @@ final class Chapter {
     var title: String
     /// 章节正文（Markdown 格式）
     var content: String
-    /// 章节状态（直接持久化枚举）
-    var chapterStatus: ChapterStatus
+    /// 章节状态原始值（String 存储，避免 SwiftData 对 Codable 枚举的兼容性问题）
+    var chapterStatusRaw: String
+    /// 章节状态（计算属性，自动转换）
+    var chapterStatus: ChapterStatus {
+        get { ChapterStatus(rawValue: chapterStatusRaw) ?? .draft }
+        set { chapterStatusRaw = newValue.rawValue }
+    }
     /// 在所属卷中的排序序号
     var order: Int
     /// 创建时间
@@ -58,7 +63,7 @@ final class Chapter {
         self.id = UUID()
         self.title = title
         self.content = content
-        self.chapterStatus = chapterStatus
+        self.chapterStatusRaw = chapterStatus.rawValue
         self.order = order
         self.createdAt = Date()
         self.updatedAt = Date()

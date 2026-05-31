@@ -179,6 +179,7 @@ struct CharacterEditView: View {
                     ToolbarItem(placement: .destructiveAction) {
                         Button("删除", role: .destructive) {
                             if let char = character {
+                                BlockRefEngine.deleteRefs(for: char.id, context: modelContext)
                                 modelContext.delete(char)
                                 try? modelContext.save()
                             }

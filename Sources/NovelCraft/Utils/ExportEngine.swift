@@ -37,12 +37,8 @@ struct ExportEngine {
         let fileName = generateFileName(format: format, scope: scope)
         
         let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent(fileName)
-        
-        /// 若临时目录中已存在同名文件，则先删除
-        if FileManager.default.fileExists(atPath: fileURL.path) {
-            try FileManager.default.removeItem(at: fileURL)
-        }
+        let uniqueFileName = "\(UUID().uuidString)-\(fileName)"
+        let fileURL = tempDir.appendingPathComponent(uniqueFileName)
         
         switch format {
         case .markdown:
@@ -132,12 +128,13 @@ struct ExportEngine {
         var result = text
         result = result.replacingOccurrences(of: "# ", with: "")
         result = result.replacingOccurrences(of: "## ", with: "")
-        result = result.replacingOccurrences(of: "**", with: "")
-        result = result.replacingOccurrences(of: "*", with: "")
         result = result.replacingOccurrences(of: "```", with: "")
         result = result.replacingOccurrences(of: "> ", with: "")
         result = result.replacingOccurrences(of: "- ", with: "• ")
         result = result.replacingOccurrences(of: "---", with: "")
+        // 精确移除 Markdown 粗体/斜体标记，避免破坏非 Markdown 星号内容
+        result = result.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "$1", options: .regularExpression)
+        result = result.replacingOccurrences(of: "\\*(.+?)\\*", with: "$1", options: .regularExpression)
         // 去除块引用语法，保留锚文本
         result = stripBlockRefs(result)
         return result
@@ -370,11 +367,11 @@ struct ExportEngine {
             }
         }
         
-        let quotePattern = try? NSRegularExpression(pattern: "^>\\s+(.+)$", options: .anchorsMatchLines)
+        let quotePattern = try? NSRegularExpression(pattern: "^(>|&gt;)\\s+(.+)$", options: .anchorsMatchLines)
         if let pattern = quotePattern {
             let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
             for match in matches.reversed() {
-                let text = (html as NSString).substring(with: match.range(at: 1))
+                let text = (html as NSString).substring(with: match.range(at: 2))
                 let replacement = "<blockquote>\(text)</blockquote>"
                 html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
             }

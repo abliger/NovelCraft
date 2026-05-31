@@ -21,11 +21,16 @@ struct FocusModeView: View {
     /// 当前字数目标
     @State private var wordGoal = 0
     /// 编辑器字体大小
-    @State private var fontSize: CGFloat = 18
+    @AppStorage("editorFontSize") private var editorFontSize: Double = 16
     /// 编辑区域最大行宽
     @State private var lineWidth: CGFloat = 700
     /// 自动保存任务（用于 debounce）
     @State private var saveTask: Task<Void, Never>?
+    
+    /// 当前字体大小
+    private var fontSize: CGFloat {
+        CGFloat(editorFontSize)
+    }
     
     var body: some View {
         ZStack {
@@ -47,7 +52,7 @@ struct FocusModeView: View {
                         Image(systemName: "arrow.down.right.and.arrow.up.left")
                         Text("退出专注")
                     }
-                    .keyboardShortcut(.escape, modifiers: [])
+                    .keyboardShortcut(.return, modifiers: [.command])
                     
                     Spacer()
                     
@@ -89,13 +94,13 @@ struct FocusModeView: View {
                         .help("统计")
                         
                         Button {
-                            fontSize = max(12, fontSize - 1)
+                            editorFontSize = max(12, editorFontSize - 1)
                         } label: {
                             Image(systemName: "textformat.size.smaller")
                         }
                         
                         Button {
-                            fontSize = min(32, fontSize + 1)
+                            editorFontSize = min(32, editorFontSize + 1)
                         } label: {
                             Image(systemName: "textformat.size.larger")
                         }
@@ -133,6 +138,7 @@ struct FocusModeView: View {
         }
         .onDisappear {
             saveTask?.cancel()
+            try? modelContext.save()
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             if isTimerRunning {

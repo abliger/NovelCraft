@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import PhotosUI
+#endif
 
 /// 项目列表视图，以卡片网格形式展示所有小说项目，支持搜索与新建。
 struct ProjectListView: View {
@@ -74,8 +77,12 @@ struct ProjectListView: View {
     }
     
     private func deleteProject(_ meta: ProjectMeta) {
-        try? FileManager.default.removeItem(atPath: meta.storagePath)
         ProjectRegistry.shared.deleteProject(id: meta.id)
+        do {
+            try FileManager.default.removeItem(atPath: meta.storagePath)
+        } catch {
+            print("删除项目文件夹失败: \(error)")
+        }
         loadProjects()
     }
     
@@ -127,15 +134,13 @@ struct ProjectCard: View {
                     
                     Spacer()
                     
-                    #if os(macOS)
-                    if let coverImage = loadCoverImage() {
-                        Image(nsImage: coverImage)
-                            .resizable()
-                            .scaledToFill()
+                    let coverPath = (project.storagePath as NSString).appendingPathComponent("cover.png")
+                    if FileManager.default.fileExists(atPath: coverPath),
+                       let coverData = try? Data(contentsOf: URL(fileURLWithPath: coverPath)) {
+                        CoverImagePreview(coverImageData: coverData)
                             .frame(width: 40, height: 40)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
-                    #endif
                 }
                 
                 Text(project.author.isEmpty ? "未填写作者" : project.author)
@@ -205,6 +210,9 @@ struct ProjectInfoView: View {
     @State private var coverImageData: Data? = nil
     @State private var targetWordCount = 50000
     @State private var dailyWordGoal = 2000
+    #if os(iOS)
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    #endif
     
     var body: some View {
         VStack(spacing: 0) {
@@ -221,31 +229,31 @@ struct ProjectInfoView: View {
             
             ScrollView {
                 Form {
-                    #if os(macOS)
                     Section("封面") {
                         HStack(spacing: 12) {
-                            if let coverImage = loadCoverImage() {
-                                Image(nsImage: coverImage)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 60, height: 60)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                            } else {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.secondary.opacity(0.15))
-                                    .frame(width: 60, height: 60)
-                                    .overlay(
-                                        Image(systemName: "photo")
-                                            .foregroundStyle(.secondary)
-                                    )
-                            }
+                            CoverImagePreview(coverImageData: coverImageData)
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
                             
                             VStack(alignment: .leading, spacing: 6) {
+                                #if os(macOS)
                                 Button("选择封面") {
                                     selectImageFile { data in
                                         if let data { coverImageData = data }
                                     }
                                 }
+                                #else
+                                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                    Text("选择封面")
+                                }
+                                .onChange(of: selectedPhotoItem) { _, newItem in
+                                    Task {
+                                        if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                                            coverImageData = data
+                                        }
+                                    }
+                                }
+                                #endif
                                 if coverImageData != nil {
                                     Button("清除封面") {
                                         coverImageData = nil
@@ -256,7 +264,6 @@ struct ProjectInfoView: View {
                             }
                         }
                     }
-                    #endif
                     
                     Section("基本信息") {
                         TextField("小说名称", text: $title)
@@ -384,6 +391,10 @@ struct NewProjectView: View {
     @State private var baseStoragePath: String? = nil
     @State private var targetWordCount = 50000
     @State private var dailyWordGoal = 2000
+    #if os(iOS)
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    #endif
+    @State private var showPathExistsAlert = false
     
     let onCreate: (ProjectMeta) -> Void
     
@@ -402,31 +413,31 @@ struct NewProjectView: View {
             
             ScrollView {
                 Form {
-                    #if os(macOS)
                     Section("封面") {
                         HStack(spacing: 12) {
-                            if let coverImageData, let nsImage = NSImage(data: coverImageData) {
-                                Image(nsImage: nsImage)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 60, height: 60)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                            } else {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.secondary.opacity(0.15))
-                                    .frame(width: 60, height: 60)
-                                    .overlay(
-                                        Image(systemName: "photo")
-                                            .foregroundStyle(.secondary)
-                                    )
-                            }
+                            CoverImagePreview(coverImageData: coverImageData)
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
                             
                             VStack(alignment: .leading, spacing: 6) {
+                                #if os(macOS)
                                 Button("选择封面") {
                                     selectImageFile { data in
                                         if let data { coverImageData = data }
                                     }
                                 }
+                                #else
+                                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                                    Text("选择封面")
+                                }
+                                .onChange(of: selectedPhotoItem) { _, newItem in
+                                    Task {
+                                        if let data = try? await newItem?.loadTransferable(type: Data.self) {
+                                            coverImageData = data
+                                        }
+                                    }
+                                }
+                                #endif
                                 if coverImageData != nil {
                                     Button("清除封面") {
                                         coverImageData = nil
@@ -437,7 +448,6 @@ struct NewProjectView: View {
                             }
                         }
                     }
-                    #endif
                     
                     Section("基本信息") {
                         TextField("小说名称", text: $title)
@@ -494,6 +504,11 @@ struct NewProjectView: View {
             .padding()
         }
         .frame(minWidth: 450, idealWidth: 450, minHeight: 400, idealHeight: 520)
+        .alert("项目已存在", isPresented: $showPathExistsAlert) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text("该路径下已存在同名项目，请更换名称或存储位置。")
+        }
     }
     
     private func createProject() {
@@ -504,7 +519,7 @@ struct NewProjectView: View {
         let projectPath = (basePath as NSString).appendingPathComponent(sanitizedTitle)
         
         guard !FileManager.default.fileExists(atPath: projectPath) else {
-            print("项目路径已存在: \(projectPath)")
+            showPathExistsAlert = true
             return
         }
         
@@ -575,6 +590,44 @@ struct NewProjectView: View {
     }
 }
 
+/// 跨平台封面图片预览组件
+private struct CoverImagePreview: View {
+    let coverImageData: Data?
+    
+    var body: some View {
+        if let coverImageData {
+            #if os(macOS)
+            if let nsImage = NSImage(data: coverImageData) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                placeholder
+            }
+            #else
+            if let uiImage = UIImage(data: coverImageData) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                placeholder
+            }
+            #endif
+        } else {
+            placeholder
+        }
+    }
+    
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 6)
+            .fill(Color.secondary.opacity(0.15))
+            .overlay(
+                Image(systemName: "photo")
+                    .foregroundStyle(.secondary)
+            )
+    }
+}
+
 #if os(macOS)
 import AppKit
 
@@ -610,12 +663,14 @@ func selectStorageDirectory(completion: @escaping (String?) -> Void) {
 /// 通用搜索输入框，带清除按钮。
 struct SearchField: View {
     @Binding var text: String
+    @FocusState private var isFocused: Bool
     
     var body: some View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
             TextField("搜索项目...", text: $text)
+                .focused($isFocused)
             if !text.isEmpty {
                 Button {
                     text = ""
@@ -629,5 +684,11 @@ struct SearchField: View {
         .padding(8)
         .background(Color(.tertiarySystemFill))
         .cornerRadius(8)
+        .onAppear {
+            // 避免窗口打开时自动聚焦到搜索框
+            DispatchQueue.main.async {
+                isFocused = false
+            }
+        }
     }
 }

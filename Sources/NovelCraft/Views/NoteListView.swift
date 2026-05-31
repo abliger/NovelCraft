@@ -17,7 +17,10 @@ struct NoteListView: View {
             if $0.isPinned != $1.isPinned {
                 return $0.isPinned && !$1.isPinned
             }
-            return $0.updatedAt > $1.updatedAt
+            if $0.updatedAt != $1.updatedAt {
+                return $0.updatedAt > $1.updatedAt
+            }
+            return $0.id.uuidString < $1.id.uuidString
         }
         if searchText.isEmpty { return all }
         return all.filter {
@@ -145,6 +148,7 @@ struct NoteCard: View {
             }
             Divider()
             Button("删除", role: .destructive) {
+                BlockRefEngine.deleteRefs(for: note.id, context: modelContext)
                 modelContext.delete(note)
                 try? modelContext.save()
             }
@@ -224,6 +228,7 @@ struct NoteEditView: View {
                     ToolbarItem(placement: .destructiveAction) {
                         Button("删除", role: .destructive) {
                             if let n = note {
+                                BlockRefEngine.deleteRefs(for: n.id, context: modelContext)
                                 modelContext.delete(n)
                                 try? modelContext.save()
                             }

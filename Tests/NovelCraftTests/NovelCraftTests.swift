@@ -69,9 +69,10 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证 StoryScene 基本属性。
     func testStorySceneCreation() {
-        let scene = StoryScene(title: "开场", content: "场景描述", viewpointCharacter: "主角")
+        let character = Character(name: "主角")
+        let scene = StoryScene(title: "开场", content: "场景描述", viewpointCharacter: character)
         XCTAssertEqual(scene.title, "开场")
-        XCTAssertEqual(scene.viewpointCharacter, "主角")
+        XCTAssertEqual(scene.viewpointCharacter?.name, "主角")
     }
     
     /// 验证 Character 基本属性。
@@ -178,7 +179,8 @@ final class NovelCraftTests: XCTestCase {
         let url = try engine.export(format: .markdown, scope: .fullProject, includeMetadata: false)
         defer { try? FileManager.default.removeItem(at: url) }
         
-        XCTAssertTrue(url.lastPathComponent.hasPrefix("未命名导出"))
+        // 文件名包含 UUID 前缀以避免冲突，验证核心名称部分
+        XCTAssertTrue(url.lastPathComponent.contains("未命名导出"), "实际文件名: \(url.lastPathComponent)")
     }
     
     /// 验证 chapter == nil 时导出当前章节会抛出错误。

@@ -145,6 +145,35 @@ enum BlockRefEngine {
         }
     }
     
+    // MARK: - 引用清理
+    
+    /// 删除与指定内容块 ID 相关的所有引用记录（正向和反向）。
+    ///
+    /// 当删除章节、角色、便签等内容块时，应调用此方法以避免产生悬挂引用。
+    static func deleteRefs(for blockID: UUID, context: ModelContext) {
+        // 删除所有 sourceBlockID 等于 blockID 的正向引用
+        let sourcePredicate = #Predicate<ContentBlockRef> {
+            $0.sourceBlockID == blockID
+        }
+        do {
+            let sourceRefs = try context.fetch(FetchDescriptor<ContentBlockRef>(predicate: sourcePredicate))
+            for ref in sourceRefs { context.delete(ref) }
+        } catch {
+            print("删除正向引用记录失败: \(error)")
+        }
+        
+        // 删除所有 targetBlockID 等于 blockID 的反向引用
+        let targetPredicate = #Predicate<ContentBlockRef> {
+            $0.targetBlockID == blockID
+        }
+        do {
+            let targetRefs = try context.fetch(FetchDescriptor<ContentBlockRef>(predicate: targetPredicate))
+            for ref in targetRefs { context.delete(ref) }
+        } catch {
+            print("删除反向引用记录失败: \(error)")
+        }
+    }
+    
     // MARK: - 内容块标题查询
     
     /// 尝试根据 ID 在项目上下文中查找内容块的标题。

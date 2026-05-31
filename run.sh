@@ -39,6 +39,11 @@ fi
 
 cp "$BUILT_EXE" "$EXE_PATH"
 
+# 复制应用图标
+if [ -f "NovelCraft.icns" ]; then
+    cp "NovelCraft.icns" "$RESOURCES_PATH/"
+fi
+
 # 复制依赖的 Bundle 资源（如隐私清单）
 find .build -name "*.bundle" -type d | while read -r bundle; do
     bundle_name=$(basename "$bundle")
@@ -61,7 +66,7 @@ cat > "$PLIST_PATH" << 'EOF'
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>NovelCraft</string>
+    <string></string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -74,6 +79,8 @@ cat > "$PLIST_PATH" << 'EOF'
     <true/>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.productivity</string>
+    <key>CFBundleIconFile</key>
+    <string>NovelCraft</string>
 </dict>
 </plist>
 EOF

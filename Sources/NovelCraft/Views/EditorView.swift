@@ -421,9 +421,27 @@ struct EditorView: View {
         }
     }
     
-    /// 在当前文本前后插入 Markdown 标记符号
+    /// 在当前文本末尾插入 Markdown 标记符号。
+    ///
+    /// 注意：由于 SwiftUI `TextEditor` 不提供光标位置 API，标记会插入到文本末尾。
+    /// 用户可手动复制标记到目标位置。如需光标感知插入，需将编辑器替换为
+    /// 平台特定的 `NSTextView`/`UITextView` 封装。
     private func applyMarkdown(prefix: String, suffix: String = "") {
-        editorText = prefix + editorText + suffix
+        let insertion: String
+        if suffix.isEmpty {
+            // 行首标记（标题、引用、列表）
+            insertion = prefix
+        } else {
+            // 包裹标记（粗体、斜体、代码块）
+            insertion = prefix + suffix
+        }
+        if editorText.isEmpty {
+            editorText = insertion
+        } else if editorText.hasSuffix("\n") {
+            editorText += insertion
+        } else {
+            editorText += "\n" + insertion
+        }
     }
     
     /// 查找并替换第一个匹配项

@@ -16,8 +16,9 @@ final class StoryScene {
     var createdAt: Date
     /// 最后更新时间
     var updatedAt: Date
-    /// 视角角色名称（可选）
-    var viewpointCharacter: String?
+    /// 视角角色（可选）
+    @Relationship(deleteRule: .nullify)
+    var viewpointCharacter: Character?
     /// 场景地点（可选）
     var location: String?
     /// 场景发生的时间描述（可选）
@@ -31,7 +32,7 @@ final class StoryScene {
         title: String = "新场景",
         content: String = "",
         order: Int = 0,
-        viewpointCharacter: String? = nil,
+        viewpointCharacter: Character? = nil,
         location: String? = nil,
         timeOfDay: String? = nil
     ) {

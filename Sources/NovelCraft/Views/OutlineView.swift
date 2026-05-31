@@ -114,6 +114,7 @@ struct OutlineCard: View {
                     }
                     Divider()
                     Button("删除", role: .destructive) {
+                        BlockRefEngine.deleteRefs(for: node.id, context: modelContext)
                         modelContext.delete(node)
                         try? modelContext.save()
                     }
@@ -196,6 +197,7 @@ struct NodeEditView: View {
                     ToolbarItem(placement: .destructiveAction) {
                         Button("删除", role: .destructive) {
                             if let n = node {
+                                BlockRefEngine.deleteRefs(for: n.id, context: modelContext)
                                 modelContext.delete(n)
                                 try? modelContext.save()
                             }
@@ -232,10 +234,27 @@ struct NodeEditView: View {
             
             let n = OutlineNode(title: title, content: content, order: order, nodeType: nodeType)
             n.project = project ?? parent?.project
-            n.parent = parent
+            
+            // 循环引用检测：确保不将节点设为自身的后代
+            if let p = parent, wouldCreateCycle(node: n, newParent: p) {
+                n.parent = nil
+            } else {
+                n.parent = parent
+            }
+            
             modelContext.insert(n)
         }
         try? modelContext.save()
         dismiss()
+    }
+    
+    /// 检测将节点设置为 newParent 的子节点是否会形成循环引用。
+    private func wouldCreateCycle(node: OutlineNode, newParent: OutlineNode) -> Bool {
+        var current: OutlineNode? = newParent
+        while let c = current {
+            if c.id == node.id { return true }
+            current = c.parent
+        }
+        return false
     }
 }
