@@ -54,6 +54,7 @@ NovelCraft/
 │       │   ├── NoteListView.swift       # 便签列表
 │       │   └── SettingsView.swift       # 设置（主题、字体、行距、自动保存等）
 │       └── Utils/
+│           ├── ProjectRegistry.swift    # 项目注册表（JSON 元数据索引）
 │           ├── ExportEngine.swift       # 导出逻辑（Markdown/TXT/PDF/EPUB）
 │           └── ThemeManager.swift       # 主题管理（跟随系统/浅色/深色）
 └── Tests/
@@ -98,7 +99,6 @@ cd NovelCraft
 ### 语言与命名
 - **界面语言**：所有用户可见字符串、模型默认值、枚举 rawValue 均为中文。例如：
   - `ChapterStatus.draft.rawValue == "草稿"`
-  - `Project` 默认标题为 `"未命名小说"`
   - `Volume` 默认标题为 `"新卷"`
 - **代码注释**：少量注释使用中文，可继续沿用中文注释。
 - **类型命名**：遵循 Swift 标准 UpperCamelCase；属性与方法使用 lowerCamelCase。
@@ -111,12 +111,19 @@ cd NovelCraft
   - 反向关系（`inverse:`）用于维护对象图一致性。
 - 时间戳字段：`createdAt`、`updatedAt` 在初始化时设置为 `Date()`，并在修改时更新。
 - 计算属性（如 `wordCount`、`progressPercentage`）不持久化，仅用于 UI 展示。
+- **项目隔离**：每个项目拥有独立的 SwiftData 数据库文件（`NovelCraft.store`），存储在项目目录下；应用不再使用全局单数据库。
+- **Project 模型**：
+  - `title` 为必填字段（无默认值）。
+  - `storagePath` 为 `String`（非 Optional），指向包含项目名称的完整目录路径。
+  - 封面图片不再以 `Data?` BLOB 存储，而是以 `cover.png` 文件存放在 `storagePath` 下。
 
 ### 视图层约定
 - 视图大量使用 `@Environment(\.modelContext)` 进行数据的增删改查。
 - 列表/树形数据通过 `@Query` 或父对象的关系属性获取，并手动按 `order` 排序。
 - `try? modelContext.save()` 被广泛用于保存变更；当前代码未对保存失败做详细错误处理，新增功能可沿用此模式或视情况加强错误提示。
 - 状态枚举的 UI 显示直接依赖 `rawValue`，修改枚举值会影响界面文本。
+- **项目列表（ProjectListView）**：不再使用 `@Query` 查询 SwiftData，而是通过 `ProjectRegistry` 读取 `projects.json` 获取项目元数据；封面图片从文件系统加载。
+- **动态 ModelContainer**：`ContentView` 根据选中的项目动态创建 `ModelContainer`（数据库位于项目目录），返回项目列表时释放容器。
 
 ### 导出引擎（ExportEngine）
 - 支持四种格式：`markdown`、`plainText`、`pdf`、`epub`。
@@ -150,7 +157,11 @@ cd NovelCraft
 - **目标平台**: macOS 14+（主要）、iOS 17+
 - **产物形式**: Swift Package Manager 可执行文件，可通过 `run.sh` 快速包装为 `.app`。
 - **Info.plist**: 由 `run.sh` 动态生成，包含本地化语言 `zh-CN`、最低系统版本 `14.0`、应用分类 `public.app-category.productivity`。
-- **数据存储**: 应用数据由 SwiftData 自动管理，默认使用系统提供的 SQLite 存储位置，无需额外配置服务器或数据库。
+- **数据存储**:
+  - 每个项目拥有独立的 SwiftData SQLite 数据库，位于 `storagePath/NovelCraft.store`。
+  - 项目注册表（元数据索引）存储在 `~/Library/Application Support/NovelCraft/projects.json`。
+  - 章节内容同时以 `.md` 文件同步到 `storagePath/卷名/章名.md`。
+  - 项目封面以 `cover.png` 文件存放在项目目录下。
 
 ## 安全与注意事项
 
@@ -158,7 +169,9 @@ cd NovelCraft
 - **外部进程**: EPUB 导出调用 `/usr/bin/zip`，在沙盒环境或自定义运行环境中需确认该路径存在。
 - **数据丢失风险**: 多处使用 `try? modelContext.save()` 静默忽略保存错误；关键操作（如批量删除）可考虑增加显式错误提示。
 - **Markdown 解析**: 当前为正则表达式实现的简易解析，对复杂嵌套语法支持有限，后续若增强预览/导出需评估引入成熟 Markdown 解析库。
+- **项目文件夹**: 删除项目时会同时删除整个 `storagePath` 目录（包含数据库、封面与 `.md` 文件），此操作不可撤销。
+- **注册表同步**: 项目字数统计与进度在注册表中是缓存值，仅在返回项目列表时同步；项目列表中的统计信息可能不是实时值。
 
 ---
 
-*Last updated: 2026-05-28*
+*Last updated: 2026-05-31*

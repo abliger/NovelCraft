@@ -5,7 +5,7 @@ struct FileSyncEngine {
     /// 将指定章节的内容同步到项目指定的存储目录。
     /// 路径结构为：storagePath/卷名/章名.md
     static func syncChapterToDisk(_ chapter: Chapter, project: Project) {
-        guard let storagePath = project.storagePath else { return }
+        let storagePath = project.storagePath
         guard let volume = chapter.volume else { return }
         
         let sanitizedVolume = sanitizeFileName(volume.title)
@@ -24,20 +24,5 @@ struct FileSyncEngine {
         } catch {
             print("文件同步失败: \(error)")
         }
-    }
-    
-    /// 清理文件名中的非法字符，防止路径遍历和无效文件名。
-    private static func sanitizeFileName(_ name: String) -> String {
-        var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|.")
-        result = result.components(separatedBy: invalidChars).joined(separator: "-")
-        result = result.replacingOccurrences(of: "..", with: "-")
-        if result.hasPrefix("-") {
-            result = "_" + result
-        }
-        if result.isEmpty {
-            result = "未命名"
-        }
-        return result
     }
 }

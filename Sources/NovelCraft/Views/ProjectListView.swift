@@ -3,16 +3,16 @@ import SwiftData
 
 /// 项目列表视图，以卡片网格形式展示所有小说项目，支持搜索与新建。
 struct ProjectListView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: [SortDescriptor<Project>(\.updatedAt, order: .reverse)]) private var projects: [Project]
-    
     @Binding var selectedProjectID: UUID?
+    
+    @State private var projects: [ProjectMeta] = []
     @State private var isShowingNewProject = false
     @State private var searchText = ""
-    @State private var projectToDelete: Project? = nil
+    @State private var projectToDelete: ProjectMeta? = nil
+    @State private var projectToEdit: ProjectMeta? = nil
     
     /// 根据搜索文本过滤后的项目列表
-    private var filteredProjects: [Project] {
+    private var filteredProjects: [ProjectMeta] {
         if searchText.isEmpty { return projects }
         return projects.filter {
             $0.title.localizedCaseInsensitiveContains(searchText) ||
@@ -27,12 +27,18 @@ struct ProjectListView: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 280, maximum: 320), spacing: 20)], spacing: 20) {
                     ForEach(filteredProjects) { project in
-                        ProjectCard(project: project, selectedProjectID: $selectedProjectID)
+                        ProjectCard(
+                            project: project,
+                            selectedProjectID: $selectedProjectID,
+                            onInfo: { projectToEdit = project },
+                            onDelete: { projectToDelete = project }
+                        )
                     }
                 }
                 .padding()
             }
         }
+        .onAppear(perform: loadProjects)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         #if os(macOS)
         .background(Color(nsColor: .windowBackgroundColor))
@@ -40,24 +46,37 @@ struct ProjectListView: View {
         .background(Color(.systemBackground))
         #endif
         .sheet(isPresented: $isShowingNewProject) {
-            NewProjectView { project in
-                selectedProjectID = project.id
+            NewProjectView { meta in
+                loadProjects()
+                selectedProjectID = meta.id
             }
+        }
+        .sheet(item: $projectToEdit) { meta in
+            ProjectInfoView(meta: meta, onSaved: loadProjects)
         }
         .alert("确认删除", isPresented: Binding(
             get: { projectToDelete != nil },
             set: { if !$0 { projectToDelete = nil } }
         )) {
             Button("删除", role: .destructive) {
-                if let project = projectToDelete {
-                    modelContext.delete(project)
-                    try? modelContext.save()
+                if let meta = projectToDelete {
+                    deleteProject(meta)
                 }
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("删除项目将同时删除所有关联的章节、角色等数据，此操作不可撤销。")
+            Text("删除项目将同时删除所有关联的章节、角色等数据及项目文件夹，此操作不可撤销。")
         }
+    }
+    
+    private func loadProjects() {
+        projects = ProjectRegistry.shared.loadProjects()
+    }
+    
+    private func deleteProject(_ meta: ProjectMeta) {
+        try? FileManager.default.removeItem(atPath: meta.storagePath)
+        ProjectRegistry.shared.deleteProject(id: meta.id)
+        loadProjects()
     }
     
     /// 顶部标题栏，包含项目计数、搜索框与新建按钮。
@@ -91,8 +110,10 @@ struct ProjectListView: View {
 
 /// 项目卡片视图，展示单个项目的标题、作者、进度与统计信息。
 struct ProjectCard: View {
-    let project: Project
+    let project: ProjectMeta
     @Binding var selectedProjectID: UUID?
+    var onInfo: () -> Void
+    var onDelete: () -> Void
     
     var body: some View {
         Button {
@@ -106,13 +127,15 @@ struct ProjectCard: View {
                     
                     Spacer()
                     
-                    if let data = project.coverImageData, let nsImage = NSImage(data: data) {
-                        Image(nsImage: nsImage)
+                    #if os(macOS)
+                    if let coverImage = loadCoverImage() {
+                        Image(nsImage: coverImage)
                             .resizable()
                             .scaledToFill()
                             .frame(width: 40, height: 40)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
+                    #endif
                 }
                 
                 Text(project.author.isEmpty ? "未填写作者" : project.author)
@@ -150,23 +173,219 @@ struct ProjectCard: View {
             .cornerRadius(12)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("项目信息") {
+                onInfo()
+            }
+            Divider()
+            Button("删除项目", role: .destructive) {
+                onDelete()
+            }
+        }
+    }
+    
+    #if os(macOS)
+    private func loadCoverImage() -> NSImage? {
+        let coverPath = (project.storagePath as NSString).appendingPathComponent("cover.png")
+        return NSImage(contentsOfFile: coverPath)
+    }
+    #endif
+}
+
+/// 项目信息视图，用于查看和编辑已有项目的基本信息、封面、存储位置与写作目标。
+struct ProjectInfoView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    let meta: ProjectMeta
+    let onSaved: () -> Void
+    
+    @State private var title = ""
+    @State private var author = ""
+    @State private var summary = ""
+    @State private var coverImageData: Data? = nil
+    @State private var targetWordCount = 50000
+    @State private var dailyWordGoal = 2000
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("项目信息")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                Button("取消") { dismiss() }
+            }
+            .padding()
+            
+            Divider()
+            
+            ScrollView {
+                Form {
+                    #if os(macOS)
+                    Section("封面") {
+                        HStack(spacing: 12) {
+                            if let coverImage = loadCoverImage() {
+                                Image(nsImage: coverImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 60, height: 60)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            } else {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.secondary.opacity(0.15))
+                                    .frame(width: 60, height: 60)
+                                    .overlay(
+                                        Image(systemName: "photo")
+                                            .foregroundStyle(.secondary)
+                                    )
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 6) {
+                                Button("选择封面") {
+                                    selectImageFile { data in
+                                        if let data { coverImageData = data }
+                                    }
+                                }
+                                if coverImageData != nil {
+                                    Button("清除封面") {
+                                        coverImageData = nil
+                                    }
+                                    .foregroundColor(.red)
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    #endif
+                    
+                    Section("基本信息") {
+                        TextField("小说名称", text: $title)
+                        TextField("作者", text: $author)
+                        TextEditor(text: $summary)
+                            .frame(height: 60)
+                    }
+                    
+                    Section("存储位置") {
+                        HStack {
+                            Text(meta.storagePath)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                    }
+                    
+                    Section("写作目标") {
+                        Stepper("目标字数: \(targetWordCount)", value: $targetWordCount, step: 5000)
+                        Stepper("每日目标: \(dailyWordGoal)", value: $dailyWordGoal, step: 500)
+                    }
+                }
+                .formStyle(.grouped)
+                .padding()
+            }
+            
+            Spacer()
+            
+            HStack {
+                Spacer()
+                Button("保存") {
+                    saveProject()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(title.isEmpty)
+            }
+            .padding()
+        }
+        .frame(minWidth: 450, idealWidth: 450, minHeight: 400, idealHeight: 520)
+        .onAppear {
+            title = meta.title
+            author = meta.author
+            summary = meta.summary
+            targetWordCount = meta.targetWordCount
+            dailyWordGoal = meta.dailyWordGoal
+            loadCoverData()
+        }
+    }
+    
+    #if os(macOS)
+    private func loadCoverImage() -> NSImage? {
+        let coverPath = (meta.storagePath as NSString).appendingPathComponent("cover.png")
+        if FileManager.default.fileExists(atPath: coverPath) {
+            return NSImage(contentsOfFile: coverPath)
+        }
+        return nil
+    }
+    #endif
+    
+    private func loadCoverData() {
+        let coverPath = (meta.storagePath as NSString).appendingPathComponent("cover.png")
+        if FileManager.default.fileExists(atPath: coverPath) {
+            coverImageData = try? Data(contentsOf: URL(fileURLWithPath: coverPath))
+        }
+    }
+    
+    private func saveProject() {
+        guard !title.isEmpty else { return }
+        
+        var updatedMeta = meta
+        updatedMeta.title = title
+        updatedMeta.author = author
+        updatedMeta.summary = summary
+        updatedMeta.targetWordCount = targetWordCount
+        updatedMeta.dailyWordGoal = dailyWordGoal
+        updatedMeta.updatedAt = Date()
+        
+        let coverPath = (meta.storagePath as NSString).appendingPathComponent("cover.png")
+        if let coverData = coverImageData {
+            try? coverData.write(to: URL(fileURLWithPath: coverPath))
+        } else {
+            try? FileManager.default.removeItem(atPath: coverPath)
+        }
+        
+        // 同步更新项目数据库中的 Project 实体
+        do {
+            let schema = Schema([
+                Project.self, Volume.self, Chapter.self, StoryScene.self,
+                Character.self, WorldSetting.self, OutlineNode.self, Note.self,
+            ])
+            let dbURL = URL(fileURLWithPath: meta.storagePath).appendingPathComponent("NovelCraft.store")
+            let config = ModelConfiguration(schema: schema, url: dbURL)
+            let container = try ModelContainer(for: schema, configurations: config)
+            let context = container.mainContext
+            
+            let descriptor = FetchDescriptor<Project>()
+            let dbProjects = try context.fetch(descriptor)
+            if let project = dbProjects.first {
+                project.title = title
+                project.author = author
+                project.summary = summary
+                project.targetWordCount = targetWordCount
+                project.dailyWordGoal = dailyWordGoal
+                project.updatedAt = Date()
+                try context.save()
+            }
+        } catch {
+            print("更新项目数据库失败: \(error)")
+        }
+        
+        ProjectRegistry.shared.updateProject(updatedMeta)
+        onSaved()
+        dismiss()
     }
 }
 
-/// 新建项目弹窗，收集小说名称、作者、简介、封面、存储位置与写作目标。
 struct NewProjectView: View {
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     
     @State private var title = ""
     @State private var author = ""
     @State private var summary = ""
     @State private var coverImageData: Data? = nil
-    @State private var storagePath: String? = nil
+    @State private var baseStoragePath: String? = nil
     @State private var targetWordCount = 50000
     @State private var dailyWordGoal = 2000
     
-    let onCreate: (Project) -> Void
+    let onCreate: (ProjectMeta) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
@@ -230,20 +449,20 @@ struct NewProjectView: View {
                     #if os(macOS)
                     Section("存储位置") {
                         HStack {
-                            Text(storagePath ?? "使用默认位置")
+                            Text(baseStoragePath ?? defaultStoragePath())
                                 .lineLimit(1)
                                 .truncationMode(.middle)
-                                .foregroundStyle(storagePath == nil ? .secondary : .primary)
+                                .foregroundStyle(.secondary)
                             Spacer()
                             HStack(spacing: 8) {
-                                Button(storagePath == nil ? "选择位置" : "更改") {
+                                Button(baseStoragePath == nil ? "选择位置" : "更改") {
                                     selectStorageDirectory { path in
-                                        if let path { storagePath = path }
+                                        if let path { baseStoragePath = path }
                                     }
                                 }
-                                if storagePath != nil {
+                                if baseStoragePath != nil {
                                     Button("恢复默认") {
-                                        storagePath = nil
+                                        baseStoragePath = nil
                                     }
                                     .foregroundColor(.red)
                                     .buttonStyle(.plain)
@@ -267,29 +486,7 @@ struct NewProjectView: View {
             HStack {
                 Spacer()
                 Button("创建") {
-                    let project = Project(
-                        title: title.isEmpty ? "未命名小说" : title,
-                        author: author,
-                        summary: summary,
-                        coverImageData: coverImageData,
-                        storagePath: storagePath,
-                        targetWordCount: targetWordCount,
-                        dailyWordGoal: dailyWordGoal
-                    )
-                    
-                    let volume = Volume(title: "第一卷", order: 0)
-                    volume.project = project
-                    
-                    let chapter = Chapter(title: "第一章", order: 0)
-                    chapter.volume = volume
-                    
-                    modelContext.insert(project)
-                    modelContext.insert(volume)
-                    modelContext.insert(chapter)
-                    try? modelContext.save()
-                    
-                    onCreate(project)
-                    dismiss()
+                    createProject()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(title.isEmpty)
@@ -297,6 +494,84 @@ struct NewProjectView: View {
             .padding()
         }
         .frame(minWidth: 450, idealWidth: 450, minHeight: 400, idealHeight: 520)
+    }
+    
+    private func createProject() {
+        guard !title.isEmpty else { return }
+        
+        let sanitizedTitle = sanitizeFileName(title)
+        let basePath = baseStoragePath ?? defaultStoragePath()
+        let projectPath = (basePath as NSString).appendingPathComponent(sanitizedTitle)
+        
+        guard !FileManager.default.fileExists(atPath: projectPath) else {
+            print("项目路径已存在: \(projectPath)")
+            return
+        }
+        
+        do {
+            try FileManager.default.createDirectory(atPath: projectPath, withIntermediateDirectories: true)
+            
+            let coverPath = (projectPath as NSString).appendingPathComponent("cover.png")
+            if let coverData = coverImageData {
+                try coverData.write(to: URL(fileURLWithPath: coverPath))
+            }
+            
+            let schema = Schema([
+                Project.self, Volume.self, Chapter.self, StoryScene.self,
+                Character.self, WorldSetting.self, OutlineNode.self, Note.self,
+            ])
+            let dbURL = URL(fileURLWithPath: projectPath).appendingPathComponent("NovelCraft.store")
+            let config = ModelConfiguration(schema: schema, url: dbURL)
+            let container = try ModelContainer(for: schema, configurations: config)
+            let context = container.mainContext
+            
+            let project = Project(
+                title: title,
+                author: author,
+                summary: summary,
+                storagePath: projectPath,
+                targetWordCount: targetWordCount,
+                dailyWordGoal: dailyWordGoal
+            )
+            context.insert(project)
+            
+            let volume = Volume(title: "第一卷", order: 0)
+            volume.project = project
+            context.insert(volume)
+            
+            let chapter = Chapter(title: "第一章", order: 0)
+            chapter.volume = volume
+            context.insert(chapter)
+            
+            try context.save()
+            
+            let meta = ProjectMeta(
+                id: project.id,
+                title: title,
+                author: author,
+                summary: summary,
+                storagePath: projectPath,
+                createdAt: project.createdAt,
+                updatedAt: project.updatedAt,
+                targetWordCount: targetWordCount,
+                dailyWordGoal: dailyWordGoal,
+                totalWordCount: 0,
+                progressPercentage: 0
+            )
+            ProjectRegistry.shared.addProject(meta)
+            
+            onCreate(meta)
+            dismiss()
+        } catch {
+            print("创建项目失败: \(error)")
+        }
+    }
+    
+    private func defaultStoragePath() -> String {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let path = documents.appendingPathComponent("NovelCraftProjects", isDirectory: true).path
+        try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+        return path
     }
 }
 

@@ -6,16 +6,14 @@ import SwiftData
 final class Project {
     @Attribute(.unique) var id: UUID
     
-    /// 小说标题
+    /// 小说标题（必填）
     var title: String
     /// 作者名称
     var author: String
     /// 小说简介
     var summary: String
-    /// 封面图片的二进制数据（可选）
-    var coverImageData: Data?
-    /// 用户自定义的项目存储路径（macOS 上用于指定工作目录）
-    var storagePath: String?
+    /// 项目存储路径（包含项目名称的完整目录路径）
+    var storagePath: String
     /// 创建时间
     var createdAt: Date
     /// 最后更新时间
@@ -46,11 +44,10 @@ final class Project {
     var notes: [Note]?
     
     init(
-        title: String = "未命名小说",
+        title: String,
         author: String = "",
         summary: String = "",
-        coverImageData: Data? = nil,
-        storagePath: String? = nil,
+        storagePath: String,
         targetWordCount: Int = 50000,
         dailyWordGoal: Int = 2000
     ) {
@@ -58,7 +55,6 @@ final class Project {
         self.title = title
         self.author = author
         self.summary = summary
-        self.coverImageData = coverImageData
         self.storagePath = storagePath
         self.createdAt = Date()
         self.updatedAt = Date()

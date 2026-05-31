@@ -26,7 +26,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证 Project 默认属性与自定义初始化值是否正确。
     func testProjectCreation() {
-        let project = Project(title: "测试小说", author: "测试作者")
+        let project = Project(title: "测试小说", author: "测试作者", storagePath: "/tmp/test-project")
         XCTAssertEqual(project.title, "测试小说")
         XCTAssertEqual(project.author, "测试作者")
         XCTAssertEqual(project.targetWordCount, 50000)
@@ -36,7 +36,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证 Volume 基本属性与关系。
     func testVolumeCreation() {
-        let project = Project(title: "测试")
+        let project = Project(title: "测试", storagePath: "/tmp/test-project")
         let volume = Volume(title: "第一卷", order: 0)
         volume.project = project
         XCTAssertEqual(volume.title, "第一卷")
@@ -107,7 +107,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证项目总字数与进度计算。
     func testProjectWordCountAndProgress() {
-        let project = Project(title: "测试", targetWordCount: 100)
+        let project = Project(title: "测试", storagePath: "/tmp/test-project", targetWordCount: 100)
         let volume = Volume()
         volume.project = project
         let chapter1 = Chapter(content: "一二三四五")
@@ -123,7 +123,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证 Markdown 导出能正确生成文件并包含项目、章节与正文内容。
     func testExportEngineMarkdown() throws {
-        let project = Project(title: "导出测试", author: "作者")
+        let project = Project(title: "导出测试", author: "作者", storagePath: "/tmp/test-export")
         let chapter = Chapter(title: "第一章", content: "这是测试内容。")
         let volume = Volume(title: "第一卷")
         volume.project = project
@@ -142,7 +142,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证纯文本导出能正确去除 Markdown 标记符号。
     func testExportEnginePlainText() throws {
-        let project = Project(title: "文本测试")
+        let project = Project(title: "文本测试", storagePath: "/tmp/test-text")
         let chapter = Chapter(title: "第一章", content: "**粗体** 和 *斜体*")
         let volume = Volume(title: "第一卷")
         volume.project = project
@@ -159,7 +159,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证文件名安全清理。
     func testExportEngineFileNameSanitization() throws {
-        let project = Project(title: "../../../etc/passwd")
+        let project = Project(title: "../../../etc/passwd", storagePath: "/tmp/test-sanitize")
         let engine = ExportEngine(project: project, chapter: nil)
         let url = try engine.export(format: .markdown, scope: .fullProject, includeMetadata: false)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -172,7 +172,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证空项目标题时文件名回退到默认值。
     func testExportEngineEmptyFileName() throws {
-        let project = Project(title: "")
+        let project = Project(title: "", storagePath: "/tmp/test-empty")
         let engine = ExportEngine(project: project, chapter: nil)
         let url = try engine.export(format: .markdown, scope: .fullProject, includeMetadata: false)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -182,7 +182,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证 chapter == nil 时导出当前章节会抛出错误。
     func testExportEngineNoChapterError() {
-        let project = Project(title: "测试")
+        let project = Project(title: "测试", storagePath: "/tmp/test-nochapter")
         let engine = ExportEngine(project: project, chapter: nil)
         XCTAssertThrowsError(try engine.export(format: .markdown, scope: .chapter, includeMetadata: false)) { error in
             XCTAssertEqual(error as? ExportError, .noChapterSelected)
@@ -191,7 +191,7 @@ final class NovelCraftTests: XCTestCase {
     
     /// 验证 HTML 转义完整性。
     func testExportEngineHTMLEscape() throws {
-        let project = Project(title: "<测试>", author: "\"作者\"")
+        let project = Project(title: "<测试>", author: "\"作者\"", storagePath: "/tmp/test-escape")
         let chapter = Chapter(title: "'章节'", content: "内容")
         let volume = Volume()
         volume.project = project

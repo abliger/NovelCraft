@@ -23,11 +23,13 @@ enum SidebarTab: String, CaseIterable {
 
 /// 应用主界面视图，负责管理项目选择、侧边栏导航、编辑器展示与全局工具栏。
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: [SortDescriptor<Project>(\.updatedAt, order: .reverse)]) private var projects: [Project]
-    
-    /// 当前选中的项目（使用 ID 避免引用失效）
+    /// 当前选中的项目 ID（nil 表示处于项目列表）
     @State private var selectedProjectID: UUID? = nil
+    /// 当前项目的数据库容器
+    @State private var projectContainer: ModelContainer?
+    /// 当前项目的数据库实例
+    @State private var currentProject: Project?
+    
     /// 当前侧边栏选中的标签
     @State private var selectedTab: SidebarTab = .chapters
     /// 当前选中的章节
@@ -39,24 +41,20 @@ struct ContentView: View {
     /// 是否显示导出面板
     @State private var isShowingExport = false
     
-    /// 根据 ID 重新获取项目实例（防止引用失效或对象被删除）
-    private var selectedProject: Project? {
-        guard let id = selectedProjectID else { return nil }
-        return projects.first { $0.id == id }
-    }
-    
     var body: some View {
         Group {
-            if isFocusMode, let project = selectedProject, let chapter = selectedChapter {
+            if isFocusMode, let project = currentProject, let chapter = selectedChapter {
                 FocusModeView(
                     project: project,
                     chapter: chapter,
                     isFocusMode: $isFocusMode
                 )
-            } else if selectedProject == nil {
-                ProjectListView(selectedProjectID: $selectedProjectID)
+            } else if let container = projectContainer, let project = currentProject {
+                mainInterface(project: project)
+                    .modelContainer(container)
+                    .id(selectedProjectID)
             } else {
-                mainInterface
+                ProjectListView(selectedProjectID: $selectedProjectID)
             }
         }
         #if os(macOS)
@@ -66,19 +64,110 @@ struct ContentView: View {
             SettingsView()
         }
         .sheet(isPresented: $isShowingExport) {
-            if let project = selectedProject {
+            if let project = currentProject {
                 ExportView(project: project, chapter: selectedChapter)
+            }
+        }
+        .onChange(of: selectedProjectID) { _, newValue in
+            if let id = newValue {
+                openProject(id: id)
+            } else {
+                closeProject()
             }
         }
     }
     
+    /// 打开指定 ID 的项目数据库。
+    private func openProject(id: UUID) {
+        guard let meta = ProjectRegistry.shared.project(withID: id) else {
+            selectedProjectID = nil
+            return
+        }
+        
+        let schema = Schema([
+            Project.self,
+            Volume.self,
+            Chapter.self,
+            StoryScene.self,
+            Character.self,
+            WorldSetting.self,
+            OutlineNode.self,
+            Note.self,
+        ])
+        
+        let dbURL = URL(fileURLWithPath: meta.storagePath)
+            .appendingPathComponent("NovelCraft.store")
+        let config = ModelConfiguration(schema: schema, url: dbURL)
+        
+        do {
+            let container = try ModelContainer(for: schema, configurations: config)
+            let context = container.mainContext
+            
+            let descriptor = FetchDescriptor<Project>()
+            let dbProjects = try context.fetch(descriptor)
+            
+            if let project = dbProjects.first {
+                // 同步注册表中的最新元数据到数据库
+                syncMetaToProject(meta: meta, project: project, context: context)
+                self.projectContainer = container
+                self.currentProject = project
+            } else {
+                // 数据库中不存在 Project 记录（异常情况），新建一个
+                let newProject = Project(
+                    title: meta.title,
+                    author: meta.author,
+                    summary: meta.summary,
+                    storagePath: meta.storagePath,
+                    targetWordCount: meta.targetWordCount,
+                    dailyWordGoal: meta.dailyWordGoal
+                )
+                context.insert(newProject)
+                try context.save()
+                self.projectContainer = container
+                self.currentProject = newProject
+            }
+        } catch {
+            print("打开项目失败: \(error)")
+            selectedProjectID = nil
+        }
+    }
+    
+    /// 关闭当前项目，清理数据库容器，并将最新统计信息同步到注册表。
+    private func closeProject() {
+        syncProjectStats()
+        projectContainer = nil
+        currentProject = nil
+        selectedChapter = nil
+    }
+    
+    /// 将当前项目的字数统计同步到注册表。
+    private func syncProjectStats() {
+        guard let project = currentProject else { return }
+        guard var meta = ProjectRegistry.shared.project(withID: project.id) else { return }
+        meta.totalWordCount = project.totalWordCount
+        meta.progressPercentage = project.progressPercentage
+        meta.updatedAt = Date()
+        ProjectRegistry.shared.updateProject(meta)
+    }
+    
+    /// 将注册表中的元数据同步到项目数据库的 Project 实体。
+    private func syncMetaToProject(meta: ProjectMeta, project: Project, context: ModelContext) {
+        project.title = meta.title
+        project.author = meta.author
+        project.summary = meta.summary
+        project.storagePath = meta.storagePath
+        project.targetWordCount = meta.targetWordCount
+        project.dailyWordGoal = meta.dailyWordGoal
+        try? context.save()
+    }
+    
     /// 主编辑界面，包含侧边栏与详情区的 NavigationSplitView。
     @ViewBuilder
-    private var mainInterface: some View {
+    private func mainInterface(project: Project) -> some View {
         NavigationSplitView {
-            sidebar
+            sidebar(project: project)
         } detail: {
-            detailView
+            detailView(project: project)
         }
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -94,13 +183,11 @@ struct ContentView: View {
             }
             
             ToolbarItem(placement: .principal) {
-                if let project = selectedProject {
-                    Text(project.title)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: 280)
-                }
+                Text(project.title)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 280)
             }
             
             ToolbarItem {
@@ -135,7 +222,7 @@ struct ContentView: View {
     
     /// 侧边栏视图，包含分段选择器与对应功能模块列表。
     @ViewBuilder
-    private var sidebar: some View {
+    private func sidebar(project: Project) -> some View {
         VStack(spacing: 0) {
             Picker("", selection: $selectedTab) {
                 ForEach(SidebarTab.allCases, id: \.self) { tab in
@@ -151,32 +238,32 @@ struct ContentView: View {
             switch selectedTab {
             case .chapters:
                 ChapterTreeView(
-                    project: selectedProject,
+                    project: project,
                     selectedChapter: $selectedChapter
                 )
             case .characters:
-                CharacterListView(project: selectedProject)
+                CharacterListView(project: project)
             case .world:
-                WorldSettingListView(project: selectedProject)
+                WorldSettingListView(project: project)
             case .outline:
-                OutlineView(project: selectedProject)
+                OutlineView(project: project)
             case .notes:
-                NoteListView(project: selectedProject)
+                NoteListView(project: project)
             }
         }
     }
     
     /// 详情区视图，根据是否选中章节展示编辑器或空状态。
     @ViewBuilder
-    private var detailView: some View {
-        if let chapter = selectedChapter, let project = selectedProject {
+    private func detailView(project: Project) -> some View {
+        if let chapter = selectedChapter {
             EditorView(
                 project: project,
                 chapter: chapter
             )
             .id(chapter.id)
         } else {
-            EmptyEditorView(project: selectedProject)
+            EmptyEditorView(project: project)
         }
     }
 }
