@@ -36,8 +36,10 @@ struct ContentView: View {
     @State private var selectedChapter: Chapter? = nil
     /// 是否进入专注模式
     @State private var isFocusMode = false
-    /// 是否显示设置面板
+    #if os(iOS)
+    /// 是否显示设置面板（iOS 通过 toolbar 按钮触发）
     @State private var isShowingSettings = false
+    #endif
     /// 是否显示导出面板
     @State private var isShowingExport = false
     
@@ -60,9 +62,11 @@ struct ContentView: View {
         #if os(macOS)
         .frame(minWidth: 900, minHeight: 600)
         #endif
+        #if os(iOS)
         .sheet(isPresented: $isShowingSettings) {
             SettingsView()
         }
+        #endif
         .sheet(isPresented: $isShowingExport) {
             if let project = currentProject {
                 ExportView(project: project, chapter: selectedChapter)
@@ -93,6 +97,7 @@ struct ContentView: View {
             WorldSetting.self,
             OutlineNode.self,
             Note.self,
+            ContentBlockRef.self,
         ])
         
         let dbURL = URL(fileURLWithPath: meta.storagePath)
@@ -182,14 +187,7 @@ struct ContentView: View {
                 .help("返回项目列表")
             }
             
-            ToolbarItem(placement: .principal) {
-                Text(project.title)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: 280)
-            }
-            
+
             ToolbarItem {
                 Button {
                     isFocusMode = true
@@ -209,6 +207,7 @@ struct ContentView: View {
                 .help("导出")
             }
             
+            #if os(iOS)
             ToolbarItem {
                 Button {
                     isShowingSettings = true
@@ -217,6 +216,7 @@ struct ContentView: View {
                 }
                 .help("设置")
             }
+            #endif
         }
     }
     
@@ -224,6 +224,17 @@ struct ContentView: View {
     @ViewBuilder
     private func sidebar(project: Project) -> some View {
         VStack(spacing: 0) {
+            #if os(macOS)
+            Text(project.title)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
+            #endif
+            
             Picker("", selection: $selectedTab) {
                 ForEach(SidebarTab.allCases, id: \.self) { tab in
                     Label(tab.rawValue, systemImage: tab.icon)

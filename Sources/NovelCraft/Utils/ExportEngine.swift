@@ -138,6 +138,28 @@ struct ExportEngine {
         result = result.replacingOccurrences(of: "> ", with: "")
         result = result.replacingOccurrences(of: "- ", with: "• ")
         result = result.replacingOccurrences(of: "---", with: "")
+        // 去除块引用语法，保留锚文本
+        result = stripBlockRefs(result)
+        return result
+    }
+    
+    /// 将块引用 ((id "锚文本")) 和嵌入 {{id}} 转换为纯文本。
+    private func stripBlockRefs(_ text: String) -> String {
+        var result = text
+        // ((id "锚文本")) -> 锚文本
+        if let pattern = try? NSRegularExpression(pattern: #"\(\([^)]+\"([^\"]+)\"\)\)"#, options: []) {
+            let matches = pattern.matches(in: result, options: [], range: NSRange(result.startIndex..., in: result))
+            for match in matches.reversed() {
+                if let anchorRange = Range(match.range(at: 1), in: result) {
+                    let anchor = String(result[anchorRange])
+                    result = (result as NSString).replacingCharacters(in: match.range, with: anchor)
+                }
+            }
+        }
+        // ((id)) -> [引用]
+        result = result.replacingOccurrences(of: #"\(\([^)]+\)\)"#, with: "[引用]", options: .regularExpression)
+        // {{id}} -> [嵌入]
+        result = result.replacingOccurrences(of: #"\{\{[^}]+\}\}"#, with: "[嵌入]", options: .regularExpression)
         return result
     }
     
@@ -324,6 +346,19 @@ struct ExportEngine {
         
         html = html.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "<strong>$1</strong>", options: .regularExpression)
         html = html.replacingOccurrences(of: "\\*(.+?)\\*", with: "<em>$1</em>", options: .regularExpression)
+        
+        // 块引用 ((id "锚文本")) -> 锚文本
+        if let refPattern = try? NSRegularExpression(pattern: #"\(\(([^)]+)\"([^\"]+)\"\)\)"#, options: []) {
+            let matches = refPattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
+            for match in matches.reversed() {
+                let anchor = (html as NSString).substring(with: match.range(at: 2))
+                html = (html as NSString).replacingCharacters(in: match.range, with: escapeHTML(anchor))
+            }
+        }
+        // 块引用 ((id)) -> [引用]
+        html = html.replacingOccurrences(of: #"\(\([^)]+\)\)"#, with: "<span style=\"color:purple\">[引用]</span>", options: .regularExpression)
+        // 块嵌入 {{id}} -> [嵌入]
+        html = html.replacingOccurrences(of: #"\{\{[^}]+\}\}"#, with: "<span style=\"color:blue\">[嵌入]</span>", options: .regularExpression)
         
         let codePattern = try? NSRegularExpression(pattern: "```(.+?)```", options: .dotMatchesLineSeparators)
         if let pattern = codePattern {

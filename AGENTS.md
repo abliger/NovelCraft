@@ -5,7 +5,7 @@
 
 ## 项目概述
 
-**NovelCraft** 是一款基于 SwiftUI 和 SwiftData 的小说创作辅助应用，面向 macOS（最低 macOS 14）与 iOS（最低 iOS 17）。项目使用 Swift Package Manager 管理依赖，核心功能包括小说项目管理、卷/章节/场景的树形组织、角色与世界观设定、大纲卡片、Markdown 编辑器、专注模式写作、以及多格式导出（Markdown / 纯文本 / PDF / EPUB）。
+**NovelCraft** 是一款基于 SwiftUI 和 SwiftData 的小说创作辅助应用，面向 macOS（最低 macOS 14）与 iOS（最低 iOS 17）。项目使用 Swift Package Manager 管理依赖，核心功能包括小说项目管理、卷/章节/场景的树形组织、角色与世界观设定、大纲卡片、Markdown 编辑器（含双向链接与内容块引用）、专注模式写作、以及多格式导出（Markdown / 纯文本 / PDF / EPUB）。
 
 项目中的所有 UI 文本、模型默认值、注释以及用户可见字符串均使用**中文**。
 
@@ -45,7 +45,7 @@ NovelCraft/
 │       │   ├── ContentView.swift        # 主界面：侧边栏 Tab + 详情区
 │       │   ├── ProjectListView.swift    # 项目列表（卡片网格、搜索、新建）
 │       │   ├── ChapterTreeView.swift    # 卷/章节树形侧边栏（增删改、排序、状态切换）
-│       │   ├── EditorView.swift         # Markdown 编辑器 + 预览 + 查找替换
+│       │   ├── EditorView.swift         # Markdown 编辑器 + 预览 + 查找替换 + 双向链接
 │       │   ├── FocusModeView.swift      # 全屏专注写作模式（计时器、统计浮层）
 │       │   ├── ExportView.swift         # 导出选项面板（范围、格式、元数据）
 │       │   ├── CharacterListView.swift  # 角色列表与编辑表单
@@ -140,6 +140,7 @@ cd NovelCraft
   - `testChapterStatus` — 验证 ChapterStatus 枚举与 rawValue 映射
   - `testExportEngineMarkdown` — 验证 Markdown 导出文件生成与内容包含
   - `testExportEnginePlainText` — 验证纯文本导出及 Markdown 标记去除
+  - `testParseBlockRef` / `testParseBlockEmbed` / `testBlockRefPlainText` / `testBlockRefEngineScan` — 验证双向链接语法解析与扫描
 - **运行方式**: `swift test`
 - **建议**: 新增模型逻辑或导出格式时，应在 `NovelCraftTests.swift` 中补充对应 XCTestCase；视图层测试目前未覆盖，可后续引入 Xcode UI 测试或 ViewInspector 等方案。
 
@@ -168,7 +169,7 @@ cd NovelCraft
 - **文件系统**: `ExportEngine` 在 `FileManager.default.temporaryDirectory` 中创建临时文件，EPUB 生成还会创建临时目录并在完成后删除。确保临时目录可写。
 - **外部进程**: EPUB 导出调用 `/usr/bin/zip`，在沙盒环境或自定义运行环境中需确认该路径存在。
 - **数据丢失风险**: 多处使用 `try? modelContext.save()` 静默忽略保存错误；关键操作（如批量删除）可考虑增加显式错误提示。
-- **Markdown 解析**: 当前为正则表达式实现的简易解析，对复杂嵌套语法支持有限，后续若增强预览/导出需评估引入成熟 Markdown 解析库。
+- **Markdown 解析**: 当前为基于 Lexer + AST 的自定义解析器，已支持标题、粗体、斜体、删除线、代码块、行内代码、链接、图片、列表、引用块、分隔线，以及双向链接语法 `((id "锚文本"))` 和块嵌入 `{{id}}`。对复杂嵌套语法支持有限，后续若增强预览/导出需评估引入成熟 Markdown 解析库。
 - **项目文件夹**: 删除项目时会同时删除整个 `storagePath` 目录（包含数据库、封面与 `.md` 文件），此操作不可撤销。
 - **注册表同步**: 项目字数统计与进度在注册表中是缓存值，仅在返回项目列表时同步；项目列表中的统计信息可能不是实时值。
 

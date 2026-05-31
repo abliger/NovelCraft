@@ -13,6 +13,7 @@ final class NovelCraftTests: XCTestCase {
         container = try! ModelContainer(
             for: Project.self, Volume.self, Chapter.self, StoryScene.self,
             Character.self, WorldSetting.self, OutlineNode.self, Note.self,
+            ContentBlockRef.self,
             configurations: config
         )
     }

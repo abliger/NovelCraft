@@ -1,9 +1,9 @@
 import SwiftUI
 import SwiftData
 
-/// Markdown 编辑器视图，提供文本编辑、实时预览、查找替换与格式工具栏。
+/// Markdown 编辑器视图，提供文本编辑、实时预览、查找替换、双向链接与格式工具栏。
 struct EditorView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\ .modelContext) private var modelContext
     
     let project: Project
     @Bindable var chapter: Chapter
@@ -26,6 +26,12 @@ struct EditorView: View {
     @State private var saveTask: Task<Void, Never>?
     /// 缓存的 Markdown 预览富文本
     @State private var cachedPreview: AttributedString = AttributedString("")
+    /// 是否显示内容块搜索面板
+    @State private var showBlockSearch = false
+    /// 是否显示反向链接面板
+    @State private var showBacklinkPanel = false
+    /// 当前章节的正向引用列表
+    @State private var forwardRefs: [ContentBlockRef] = []
     
     /// 标识当前编辑器使用 Markdown 格式
     private var isMarkdown: Bool {
@@ -38,23 +44,37 @@ struct EditorView: View {
             
             Divider()
             
-            ZStack {
-                if isPreviewMode {
-                    ScrollView {
-                        Text(cachedPreview)
-                            .padding()
+            HStack(spacing: 0) {
+                // 主编辑/预览区域
+                ZStack {
+                    if isPreviewMode {
+                        ScrollView {
+                            Text(cachedPreview)
+                                .padding()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else {
+                        TextEditor(text: $editorText)
+                            .font(.system(size: fontSize))
+                            .lineSpacing(8)
+                            .padding(.horizontal)
+                            .scrollContentBackground(.hidden)
+                            #if os(macOS)
+                            .background(Color(.textBackgroundColor))
+                            #else
+                            .background(Color(.systemBackground))
+                            #endif
                     }
-                } else {
-                    TextEditor(text: $editorText)
-                        .font(.system(size: fontSize))
-                        .lineSpacing(8)
-                        .padding(.horizontal)
-                        .scrollContentBackground(.hidden)
-                        #if os(macOS)
-                        .background(Color(.textBackgroundColor))
-                        #else
-                        .background(Color(.systemBackground))
-                        #endif
+                }
+                
+                // 反向链接侧边栏
+                if showBacklinkPanel {
+                    Divider()
+                    BacklinkPanelView(
+                        blockID: chapter.id,
+                        blockTitle: chapter.title
+                    )
+                    .frame(width: 260)
                 }
             }
             
@@ -65,10 +85,12 @@ struct EditorView: View {
         .onAppear {
             editorText = chapter.content
             updatePreview()
+            loadForwardRefs()
         }
         .onChange(of: chapter.id) { _, _ in
             editorText = chapter.content
             updatePreview()
+            loadForwardRefs()
         }
         .onChange(of: editorText) { _, newValue in
             chapter.content = newValue
@@ -84,6 +106,11 @@ struct EditorView: View {
                 FileSyncEngine.syncChapterToDisk(chapter, project: project)
             }
         }
+        .sheet(isPresented: $showBlockSearch) {
+            BlockRefSearchView(project: project) { targetID, title, isEmbed in
+                insertBlockRef(targetID: targetID, title: title, isEmbed: isEmbed)
+            }
+        }
     }
     
     /// 延迟保存，避免每次按键都触发数据库写入
@@ -92,13 +119,40 @@ struct EditorView: View {
         saveTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            try? modelContext.save()
+            syncRefsAndSave()
         }
     }
     
+    /// 同步引用记录并保存数据库
+    private func syncRefsAndSave() {
+        BlockRefEngine.syncRefs(sourceBlockID: chapter.id, content: editorText, context: modelContext)
+        try? modelContext.save()
+        loadForwardRefs()
+    }
+    
+    /// 加载当前章节的正向引用
+    private func loadForwardRefs() {
+        forwardRefs = BlockRefEngine.forwardRefs(from: chapter.id, context: modelContext)
+    }
+    
+    /// 在文本末尾插入块引用或嵌入语法
+    private func insertBlockRef(targetID: UUID, title: String, isEmbed: Bool) {
+        let syntax: String
+        if isEmbed {
+            syntax = "\n{{\(targetID.uuidString)}}\n"
+        } else {
+            let safeTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
+            syntax = "\n((\(targetID.uuidString) \"\(safeTitle)\"))\n"
+        }
+        editorText += syntax
+    }
+    
     /// 异步更新 Markdown 预览缓存
+    @MainActor
     private func updatePreview() {
-        cachedPreview = MarkdownParser.attributedString(from: editorText)
+        Task {
+            cachedPreview = await MarkdownParser.attributedStringAsync(from: editorText)
+        }
     }
     
     /// 编辑器顶部工具栏，提供 Markdown 格式插入与字体调整按钮。
@@ -149,6 +203,37 @@ struct EditorView: View {
                     Image(systemName: "curlybraces")
                 }
                 .help("代码块")
+                
+                Divider()
+                    .frame(height: 20)
+                
+                // 双向链接按钮
+                Button {
+                    showBlockSearch = true
+                } label: {
+                    Image(systemName: "link.badge.plus")
+                }
+                .help("插入双向链接")
+                
+                // 反向链接面板开关
+                Button {
+                    withAnimation {
+                        showBacklinkPanel.toggle()
+                    }
+                } label: {
+                    Image(systemName: showBacklinkPanel ? "link.circle.fill" : "link.circle")
+                }
+                .help("反向链接面板")
+                
+                if !forwardRefs.isEmpty {
+                    Text("\(forwardRefs.count)")
+                        .font(.caption2)
+                        .foregroundStyle(.purple)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.purple.opacity(0.15))
+                        .cornerRadius(4)
+                }
             }
             
             Spacer()
@@ -271,46 +356,5 @@ struct EditorView: View {
     /// 查找并替换所有匹配项
     private func replaceAll() {
         editorText = editorText.replacingOccurrences(of: findText, with: replaceText)
-    }
-}
-
-/// Markdown 解析工具，将 Markdown 文本转换为 AttributedString。
-enum MarkdownParser {
-    /// 将 Markdown 文本转换为 AttributedString，支持标题、粗体与斜体。
-    static func attributedString(from text: String) -> AttributedString {
-        var result = AttributedString(text)
-        
-        let headingPattern = try? NSRegularExpression(pattern: "^#{1,6}\\s+(.+)$", options: .anchorsMatchLines)
-        if let pattern = headingPattern {
-            let matches = pattern.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
-            for match in matches.reversed() {
-                if let range = Range(match.range, in: result) {
-                    result[range].font = .title
-                    result[range].foregroundColor = .primary
-                }
-            }
-        }
-        
-        let boldPattern = try? NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*", options: [])
-        if let pattern = boldPattern {
-            let matches = pattern.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
-            for match in matches.reversed() {
-                if let range = Range(match.range(at: 1), in: result) {
-                    result[range].font = (result[range].font ?? .body).bold()
-                }
-            }
-        }
-        
-        let italicPattern = try? NSRegularExpression(pattern: "\\*(.+?)\\*", options: [])
-        if let pattern = italicPattern {
-            let matches = pattern.matches(in: text, options: [], range: NSRange(location: 0, length: text.utf16.count))
-            for match in matches.reversed() {
-                if let range = Range(match.range(at: 1), in: result) {
-                    result[range].font = (result[range].font ?? .body).italic()
-                }
-            }
-        }
-        
-        return result
     }
 }
