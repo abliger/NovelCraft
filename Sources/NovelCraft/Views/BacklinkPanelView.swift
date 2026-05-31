@@ -70,9 +70,6 @@ struct BacklinkPanelView: View {
         .task(id: blockID) {
             await loadRefs()
         }
-        .onChange(of: blockID) { _, _ in
-            Task { await loadRefs() }
-        }
     }
     
     @MainActor
@@ -91,7 +88,7 @@ private struct RefRow: View {
     let isSource: Bool
     
     @State private var targetTitle: String = ""
-    @State private var targetType: BlockType = .chapter
+    @State private var targetType: EntityBlockType = .chapter
     
     private var displayID: UUID {
         isSource ? ref.sourceBlockID : ref.targetBlockID
@@ -131,7 +128,7 @@ private struct RefRow: View {
                 .cornerRadius(4)
         }
         .padding(.vertical, 4)
-        .task {
+        .task(id: ref.id) {
             await resolveTarget()
         }
     }

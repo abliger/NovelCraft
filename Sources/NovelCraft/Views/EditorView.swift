@@ -3,7 +3,7 @@ import SwiftData
 
 /// Markdown 编辑器视图，提供文本编辑、实时预览、查找替换、双向链接与格式工具栏。
 struct EditorView: View {
-    @Environment(\ .modelContext) private var modelContext
+    @Environment(\.modelContext) private var modelContext
     
     let project: Project
     @Bindable var chapter: Chapter
@@ -19,11 +19,15 @@ struct EditorView: View {
     /// 替换文本
     @State private var replaceText = ""
     /// 当前编辑器字体大小
-    @State private var fontSize: CGFloat = 16
-    /// 是否启用自动保存
-    @State private var isAutoSaveEnabled = true
+    @AppStorage("editorFontSize") private var editorFontSize: Double = 16
+    /// 编辑器行间距
+    @AppStorage("editorLineSpacing") private var editorLineSpacing: Double = 8
+    /// 是否启用自动保存（autoSaveInterval > 0 视为启用）
+    @AppStorage("autoSaveInterval") private var autoSaveInterval: Double = 30
     /// 自动保存任务（用于 debounce）
     @State private var saveTask: Task<Void, Never>?
+    /// 预览更新任务（用于取消旧任务）
+    @State private var previewTask: Task<Void, Never>?
     /// 缓存的 Markdown 预览富文本
     @State private var cachedPreview: AttributedString = AttributedString("")
     /// 是否显示内容块搜索面板
@@ -32,10 +36,33 @@ struct EditorView: View {
     @State private var showBacklinkPanel = false
     /// 当前章节的正向引用列表
     @State private var forwardRefs: [ContentBlockRef] = []
+    /// 是否显示图片插入面板
+    @State private var showImageInsert = false
+    /// 是否正在拖放图片悬停
+    @State private var isDropTarget = false
+    /// 图片处理方式（从设置读取）
+    @AppStorage("imageHandlingMode") private var imageHandlingMode = 1
+    /// 是否允许下载网络图片
+    @AppStorage("allowDownloadWebImages") private var allowDownloadWebImages = true
     
     /// 标识当前编辑器使用 Markdown 格式
     private var isMarkdown: Bool {
         true
+    }
+    
+    /// 是否启用自动保存
+    private var isAutoSaveEnabled: Bool {
+        autoSaveInterval > 0
+    }
+    
+    /// 当前字体大小
+    private var fontSize: CGFloat {
+        CGFloat(editorFontSize)
+    }
+    
+    /// 当前行间距
+    private var lineSpacing: CGFloat {
+        CGFloat(editorLineSpacing)
     }
     
     var body: some View {
@@ -56,7 +83,7 @@ struct EditorView: View {
                     } else {
                         TextEditor(text: $editorText)
                             .font(.system(size: fontSize))
-                            .lineSpacing(8)
+                            .lineSpacing(lineSpacing)
                             .padding(.horizontal)
                             .scrollContentBackground(.hidden)
                             #if os(macOS)
@@ -111,6 +138,19 @@ struct EditorView: View {
                 insertBlockRef(targetID: targetID, title: title, isEmbed: isEmbed)
             }
         }
+        .sheet(isPresented: $showImageInsert) {
+            ImageInsertView(project: project) { markdown in
+                insertImageMarkdown(markdown)
+            }
+        }
+        #if os(macOS)
+        .dropDestination(for: URL.self) { urls, location in
+            Task { await handleDroppedURLs(urls) }
+            return true
+        } isTargeted: { targeted in
+            isDropTarget = targeted
+        }
+        #endif
     }
     
     /// 延迟保存，避免每次按键都触发数据库写入
@@ -147,11 +187,43 @@ struct EditorView: View {
         editorText += syntax
     }
     
-    /// 异步更新 Markdown 预览缓存
+    /// 在文本末尾插入 Markdown 图片语法
+    private func insertImageMarkdown(_ markdown: String) {
+        editorText += "\n\(markdown)\n"
+    }
+    
+    /// 处理拖放的图片 URL
+    @MainActor
+    private func handleDroppedURLs(_ urls: [URL]) async {
+        guard !isPreviewMode else { return }
+        
+        let mode = ImageAssetEngine.HandlingMode(rawValue: imageHandlingMode) ?? .copyLocal
+        
+        for url in urls {
+            guard ImageAssetEngine.isImageFile(url) else { continue }
+            
+            let effectiveMode: ImageAssetEngine.HandlingMode
+            if mode == .downloadWeb && !allowDownloadWebImages && url.scheme?.hasPrefix("http") == true {
+                effectiveMode = .reference
+            } else {
+                effectiveMode = mode
+            }
+            
+            let path = await ImageAssetEngine.processImage(url: url, project: project, mode: effectiveMode)
+            let alt = url.deletingPathExtension().lastPathComponent
+            let markdown = "![\(alt)](\(path))"
+            editorText += "\n\(markdown)\n"
+        }
+    }
+    
+    /// 异步更新 Markdown 预览缓存，取消旧任务避免竞态
     @MainActor
     private func updatePreview() {
-        Task {
-            cachedPreview = await MarkdownParser.attributedStringAsync(from: editorText)
+        previewTask?.cancel()
+        previewTask = Task {
+            let preview = await MarkdownParser.attributedStringAsync(from: editorText)
+            guard !Task.isCancelled else { return }
+            cachedPreview = preview
         }
     }
     
@@ -215,6 +287,14 @@ struct EditorView: View {
                 }
                 .help("插入双向链接")
                 
+                // 插入图片按钮
+                Button {
+                    showImageInsert = true
+                } label: {
+                    Image(systemName: "photo")
+                }
+                .help("插入图片")
+                
                 // 反向链接面板开关
                 Button {
                     withAnimation {
@@ -257,18 +337,18 @@ struct EditorView: View {
                     .frame(height: 20)
                 
                 Button {
-                    fontSize = max(12, fontSize - 1)
+                    editorFontSize = max(12, editorFontSize - 1)
                 } label: {
                     Image(systemName: "textformat.size.smaller")
                 }
                 .help("缩小字体")
                 
-                Text("\(Int(fontSize))")
+                Text("\(Int(editorFontSize))")
                     .font(.caption)
                     .frame(width: 24)
                 
                 Button {
-                    fontSize = min(32, fontSize + 1)
+                    editorFontSize = min(32, editorFontSize + 1)
                 } label: {
                     Image(systemName: "textformat.size.larger")
                 }
@@ -348,6 +428,7 @@ struct EditorView: View {
     
     /// 查找并替换第一个匹配项
     private func replace() {
+        guard !findText.isEmpty else { return }
         if let range = editorText.range(of: findText) {
             editorText.replaceSubrange(range, with: replaceText)
         }
@@ -355,6 +436,7 @@ struct EditorView: View {
     
     /// 查找并替换所有匹配项
     private func replaceAll() {
+        guard !findText.isEmpty else { return }
         editorText = editorText.replacingOccurrences(of: findText, with: replaceText)
     }
 }

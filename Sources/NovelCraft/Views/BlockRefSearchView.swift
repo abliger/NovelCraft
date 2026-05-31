@@ -100,7 +100,7 @@ struct BlockRefSearchView: View {
                 }
             }
         }
-        .onAppear {
+        .task(id: project.id) {
             loadAllBlocks()
         }
     }
@@ -112,7 +112,7 @@ struct BlockRefSearchView: View {
         // 章节
         if let volumes = project.volumes {
             for volume in volumes {
-                blocks.append(BlockMeta(id: volume.id, title: volume.title, type: .chapter))
+                blocks.append(BlockMeta(id: volume.id, title: volume.title, type: .volume))
                 if let chapters = volume.chapters {
                     for chapter in chapters {
                         blocks.append(BlockMeta(id: chapter.id, title: chapter.title, type: .chapter))

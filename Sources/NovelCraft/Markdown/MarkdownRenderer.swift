@@ -91,10 +91,13 @@ struct MarkdownRenderer {
             #endif
             return result
 
-        case .image(let alt, _):
+        case .image(let alt, let url):
             // 纯文本预览中无法显示图片，用占位符表示
-            var result = AttributedString("[\(alt)]")
+            let isLocal = !url.hasPrefix("http")
+            let icon = isLocal ? "🖼️" : "🌐"
+            var result = AttributedString("\(icon) [图片: \(alt.isEmpty ? "未命名" : alt)]")
             result.foregroundColor = .secondary
+            result.backgroundColor = Color.gray.opacity(0.08)
             result.font = .caption
             return result
 

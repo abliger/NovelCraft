@@ -9,13 +9,13 @@ enum BlockRefEngine {
     // MARK: - 正则表达式
     
     /// 匹配 ((id)) 或 ((id "锚文本"))
-    static let blockRefPattern = try! NSRegularExpression(
+    static let blockRefPattern: NSRegularExpression? = try? NSRegularExpression(
         pattern: #"\(\(([^)]+)\)\)"#,
         options: []
     )
     
     /// 匹配 {{id}}
-    static let blockEmbedPattern = try! NSRegularExpression(
+    static let blockEmbedPattern: NSRegularExpression? = try? NSRegularExpression(
         pattern: #"\{\{([^}]+)\}\}"#,
         options: []
     )
@@ -31,20 +31,24 @@ enum BlockRefEngine {
         let nsRange = NSRange(text.startIndex..., in: text)
         
         // 扫描 ((...))
-        let refMatches = blockRefPattern.matches(in: text, options: [], range: nsRange)
-        for match in refMatches {
-            guard let range = Range(match.range(at: 1), in: text) else { continue }
-            let content = String(text[range]).trimmingCharacters(in: .whitespaces)
-            let (id, anchor) = parseRefContent(content)
-            results.append((targetID: id, anchor: anchor, isEmbed: false))
+        if let pattern = blockRefPattern {
+            let refMatches = pattern.matches(in: text, options: [], range: nsRange)
+            for match in refMatches {
+                guard let range = Range(match.range(at: 1), in: text) else { continue }
+                let content = String(text[range]).trimmingCharacters(in: .whitespaces)
+                let (id, anchor) = parseRefContent(content)
+                results.append((targetID: id, anchor: anchor, isEmbed: false))
+            }
         }
         
         // 扫描 {{...}}
-        let embedMatches = blockEmbedPattern.matches(in: text, options: [], range: nsRange)
-        for match in embedMatches {
-            guard let range = Range(match.range(at: 1), in: text) else { continue }
-            let id = String(text[range]).trimmingCharacters(in: .whitespaces)
-            results.append((targetID: id, anchor: nil, isEmbed: true))
+        if let pattern = blockEmbedPattern {
+            let embedMatches = pattern.matches(in: text, options: [], range: nsRange)
+            for match in embedMatches {
+                guard let range = Range(match.range(at: 1), in: text) else { continue }
+                let id = String(text[range]).trimmingCharacters(in: .whitespaces)
+                results.append((targetID: id, anchor: nil, isEmbed: true))
+            }
         }
         
         return results
@@ -206,8 +210,9 @@ enum BlockRefEngine {
 
 // MARK: - 内容块元数据
 
-/// 内容块类型枚举
-enum BlockType: String, CaseIterable {
+/// 内容块实体类型枚举
+enum EntityBlockType: String, CaseIterable {
+    case volume = "卷"
     case chapter = "章节"
     case note = "便签"
     case scene = "场景"
@@ -217,6 +222,7 @@ enum BlockType: String, CaseIterable {
     
     var icon: String {
         switch self {
+        case .volume: return "folder"
         case .chapter: return "doc.text"
         case .note: return "note.text"
         case .scene: return "film"
@@ -231,5 +237,5 @@ enum BlockType: String, CaseIterable {
 struct BlockMeta: Identifiable {
     let id: UUID
     let title: String
-    let type: BlockType
+    let type: EntityBlockType
 }

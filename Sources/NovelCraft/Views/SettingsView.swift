@@ -21,98 +21,124 @@ struct SettingsView: View {
     @AppStorage("defaultTargetWordCount") private var defaultTargetWordCount: Double = 50000
     /// 新建项目时的默认每日写作目标字数
     @AppStorage("defaultDailyGoal") private var defaultDailyGoal: Double = 2000
+    /// 图片处理方式：0=引用原路径, 1=拷贝到项目, 2=下载网图
+    @AppStorage("imageHandlingMode") private var imageHandlingMode = 1
+    /// 是否允许下载网络图片
+    @AppStorage("allowDownloadWebImages") private var allowDownloadWebImages = true
     
+    #if os(iOS)
     @Environment(\.dismiss) private var dismiss
+    #endif
     
     var body: some View {
+        #if os(macOS)
+        settingsForm
+            .frame(minWidth: 400, minHeight: 400)
+        #else
         NavigationStack {
-            Form {
-                // MARK: - 外观
-                Section("外观") {
-                    Picker("主题", selection: $themeMode) {
-                        Text("跟随系统").tag(0)
-                        Text("浅色").tag(1)
-                        Text("深色").tag(2)
-                    }
-                    
-                    HStack {
-                        Text("编辑器字体大小")
-                        Spacer()
-                        Slider(value: $editorFontSize, in: 12...32, step: 1)
-                            .frame(width: 150)
-                        Text("\(Int(editorFontSize))")
-                            .frame(width: 30, alignment: .trailing)
-                    }
-                    
-                    HStack {
-                        Text("行间距")
-                        Spacer()
-                        Slider(value: $editorLineSpacing, in: 0...20, step: 1)
-                            .frame(width: 150)
-                        Text("\(Int(editorLineSpacing))")
-                            .frame(width: 30, alignment: .trailing)
-                    }
-                    
-                    Toggle("显示行号", isOn: $showLineNumbers)
-                }
-                
-                // MARK: - 编辑
-                Section("编辑") {
-                    Toggle("打字机模式（光标居中）", isOn: $enableTypewriterMode)
-                    
-                    HStack {
-                        Text("自动保存间隔（秒）")
-                        Spacer()
-                        Slider(value: $autoSaveInterval, in: 5...300, step: 5)
-                            .frame(width: 150)
-                        Text("\(Int(autoSaveInterval))")
-                            .frame(width: 40, alignment: .trailing)
+            settingsForm
+                .navigationTitle("设置")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("关闭") { dismiss() }
                     }
                 }
-                
-                // MARK: - 默认目标
-                Section("默认目标") {
-                    HStack {
-                        Text("默认目标字数")
-                        Spacer()
-                        TextField("", value: $defaultTargetWordCount, format: .number)
-                            .frame(width: 100)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    
-                    HStack {
-                        Text("默认每日目标")
-                        Spacer()
-                        TextField("", value: $defaultDailyGoal, format: .number)
-                            .frame(width: 100)
-                            .multilineTextAlignment(.trailing)
-                    }
+        }
+        #endif
+    }
+    
+    private var settingsForm: some View {
+        Form {
+            // MARK: - 外观
+            Section("外观") {
+                Picker("主题", selection: $themeMode) {
+                    Text("跟随系统").tag(0)
+                    Text("浅色").tag(1)
+                    Text("深色").tag(2)
                 }
                 
-                // MARK: - 关于
-                Section("关于") {
-                    HStack {
-                        Text("版本")
-                        Spacer()
-                        Text("1.0.0")
-                            .foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Text("开发者")
-                        Spacer()
-                        Text("NovelCraft Team")
-                            .foregroundStyle(.secondary)
-                    }
+                HStack {
+                    Text("编辑器字体大小")
+                    Spacer()
+                    Slider(value: $editorFontSize, in: 12...32, step: 1)
+                        .frame(width: 150)
+                    Text("\(Int(editorFontSize))")
+                        .frame(width: 30, alignment: .trailing)
+                }
+                
+                HStack {
+                    Text("行间距")
+                    Spacer()
+                    Slider(value: $editorLineSpacing, in: 0...20, step: 1)
+                        .frame(width: 150)
+                    Text("\(Int(editorLineSpacing))")
+                        .frame(width: 30, alignment: .trailing)
+                }
+                
+                Toggle("显示行号", isOn: $showLineNumbers)
+            }
+            
+            // MARK: - 编辑
+            Section("编辑") {
+                Toggle("打字机模式（光标居中）", isOn: $enableTypewriterMode)
+                
+                HStack {
+                    Text("自动保存间隔（秒）")
+                    Spacer()
+                    Slider(value: $autoSaveInterval, in: 5...300, step: 5)
+                        .frame(width: 150)
+                    Text("\(Int(autoSaveInterval))")
+                        .frame(width: 40, alignment: .trailing)
                 }
             }
-            .formStyle(.grouped)
-            .navigationTitle("设置")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
+            
+            // MARK: - 默认目标
+            Section("默认目标") {
+                HStack {
+                    Text("默认目标字数")
+                    Spacer()
+                    TextField("", value: $defaultTargetWordCount, format: .number)
+                        .frame(width: 100)
+                        .multilineTextAlignment(.trailing)
+                }
+                
+                HStack {
+                    Text("默认每日目标")
+                    Spacer()
+                    TextField("", value: $defaultDailyGoal, format: .number)
+                        .frame(width: 100)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            
+            // MARK: - 图片
+            Section("图片") {
+                Picker("图片处理方式", selection: $imageHandlingMode) {
+                    Text("引用原路径").tag(0)
+                    Text("拷贝到项目").tag(1)
+                    Text("下载网图到项目").tag(2)
+                }
+                
+                Toggle("允许下载网络图片", isOn: $allowDownloadWebImages)
+                    .disabled(imageHandlingMode != 2)
+            }
+            
+            // MARK: - 关于
+            Section("关于") {
+                HStack {
+                    Text("版本")
+                    Spacer()
+                    Text("1.0.0")
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Text("开发者")
+                    Spacer()
+                    Text("NovelCraft Team")
+                        .foregroundStyle(.secondary)
                 }
             }
         }
-        .frame(minWidth: 450, minHeight: 500)
+        .formStyle(.grouped)
     }
 }
