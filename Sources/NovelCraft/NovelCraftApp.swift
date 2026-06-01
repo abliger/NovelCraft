@@ -8,10 +8,19 @@ extension Notification.Name {
     static let triggerPluginAction = Notification.Name("NovelCraft.TriggerPluginAction")
 }
 
+/// 设备监控菜单栏状态，用于控制 MenuBarExtra 的显示与隐藏。
+final class DeviceMonitorState: ObservableObject {
+    @Published var isVisible = false
+}
+
 @main
 struct NovelCraftApp: App {
+    private let deviceMonitorState = DeviceMonitorState()
+    
     init() {
         setupAutoTimestamps()
+        // 必须先注册 MenuBarExtra 通知监听，再注册插件，否则插件 setup 发出的通知会丢失
+        setupDeviceMonitorObserver()
         PluginManager.shared.registerBuiltInPlugins()
     }
     
@@ -30,7 +39,27 @@ struct NovelCraftApp: App {
         Settings {
             SettingsView()
         }
+        
+        MenuBarExtra("设备监控", systemImage: "cpu", isInserted: Binding(
+            get: { deviceMonitorState.isVisible },
+            set: { deviceMonitorState.isVisible = $0 }
+        )) {
+            DeviceMonitorView()
+        }
+        .menuBarExtraStyle(.window)
         #endif
+    }
+    
+    /// 监听设备监控插件的可见性变化通知。
+    private func setupDeviceMonitorObserver() {
+        NotificationCenter.default.addObserver(
+            forName: .deviceMonitorVisibilityChanged,
+            object: nil,
+            queue: .main
+        ) { [weak deviceMonitorState] notification in
+            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
+            deviceMonitorState?.isVisible = isVisible
+        }
     }
     
     /// 注册 Core Data 保存前通知，自动更新所有带 `updatedAt` 字段的模型对象。

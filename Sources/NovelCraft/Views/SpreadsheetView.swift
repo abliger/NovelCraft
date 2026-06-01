@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 /// 电子表格视图，以二维网格形式展示工作表中的单元格。
-/// 支持多 Sheet 切换、单元格编辑、行列扩展，以及单元格内容中的双向链接。
+/// 采用"点击编辑"模式，同一时刻仅有一个单元格处于 TextField 编辑状态，避免大量输入框同时存在导致的性能问题。
 struct SpreadsheetView: View {
     @Environment(\.modelContext) private var modelContext
     let project: Project
@@ -11,6 +11,10 @@ struct SpreadsheetView: View {
     @Query(sort: \SpreadsheetCell.row) private var allCells: [SpreadsheetCell]
 
     @State private var selectedSheet: SpreadsheetSheet?
+    /// 当前正在编辑的单元格
+    @State private var editingCell: SpreadsheetCell?
+    /// 编辑中的临时文本
+    @State private var editText: String = ""
 
     private var sheets: [SpreadsheetSheet] {
         allSheets.filter { $0.project?.id == project.id }
@@ -56,6 +60,7 @@ struct SpreadsheetView: View {
             HStack(spacing: 0) {
                 ForEach(sheets) { sheet in
                     Button {
+                        finishEditing()
                         withAnimation {
                             selectedSheet = sheet
                         }
@@ -137,27 +142,32 @@ struct SpreadsheetView: View {
         }
     }
 
+    @ViewBuilder
     private func cellView(row: Int, column: Int) -> some View {
         let cell = cellsByRowCol[row]?[column]
-        return TextField("", text: Binding(
-            get: { cell?.content ?? "" },
-            set: { newValue in
-                guard let cell = cell else { return }
-                cell.content = newValue
-                cell.sheet?.updatedAt = Date()
-                BlockRefEngine.syncRefs(
-                    sourceBlockID: cell.id,
-                    content: newValue,
-                    context: modelContext
-                )
-                try? modelContext.save()
-            }
-        ))
-        .textFieldStyle(.plain)
-        .frame(width: 100, height: 30)
-        .padding(.horizontal, 4)
-        .background(Color.secondary.opacity(0.05))
-        .id("cell-\(row)-\(column)")
+        if let cell = cell, editingCell?.id == cell.id {
+            // 编辑模式：只有一个 TextField
+            TextField("", text: $editText)
+                .textFieldStyle(.plain)
+                .frame(width: 100, height: 30)
+                .padding(.horizontal, 4)
+                .background(Color.accentColor.opacity(0.15))
+                .onSubmit { finishEditing() }
+        } else {
+            // 显示模式：纯文本，点击后进入编辑
+            Text(cell?.content ?? "")
+                .frame(width: 100, height: 30)
+                .padding(.horizontal, 4)
+                .background(Color.secondary.opacity(0.05))
+                .lineLimit(1)
+                .onTapGesture {
+                    finishEditing()
+                    if let cell = cell {
+                        editingCell = cell
+                        editText = cell.content
+                    }
+                }
+        }
     }
 
     private var emptyState: some View {
@@ -195,7 +205,25 @@ struct SpreadsheetView: View {
 
     // MARK: - 操作
 
+    /// 结束当前编辑，如有变更则保存并同步双向链接。
+    private func finishEditing() {
+        guard let cell = editingCell else { return }
+        let trimmed = editText
+        if cell.content != trimmed {
+            cell.content = trimmed
+            cell.sheet?.updatedAt = Date()
+            BlockRefEngine.syncRefs(
+                sourceBlockID: cell.id,
+                content: trimmed,
+                context: modelContext
+            )
+            try? modelContext.save()
+        }
+        editingCell = nil
+    }
+
     private func addSheet() {
+        finishEditing()
         let newSheet = SpreadsheetSheet(title: "表格 \(sheets.count + 1)")
         newSheet.project = project
         modelContext.insert(newSheet)
@@ -205,6 +233,7 @@ struct SpreadsheetView: View {
     }
 
     private func deleteSheet(_ sheet: SpreadsheetSheet) {
+        finishEditing()
         BlockRefEngine.deleteRefs(for: sheet.id, context: modelContext)
         if let cells = sheet.cells {
             for cell in cells {
@@ -219,12 +248,14 @@ struct SpreadsheetView: View {
     }
 
     private func addRow() {
+        finishEditing()
         guard let sheet = selectedSheet else { return }
         sheet.appendRow(context: modelContext)
         try? modelContext.save()
     }
 
     private func addColumn() {
+        finishEditing()
         guard let sheet = selectedSheet else { return }
         sheet.appendColumn(context: modelContext)
         try? modelContext.save()
