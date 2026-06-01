@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 /// 右侧辅助面板标签枚举。
 enum RightPanelTab: String, CaseIterable {
@@ -7,7 +7,7 @@ enum RightPanelTab: String, CaseIterable {
     case world = "世界观"
     case outline = "大纲"
     case notes = "便签"
-    
+
     var icon: String {
         switch self {
         case .characters: return "person.2"
@@ -26,9 +26,7 @@ struct ContentView: View {
     @State private var projectContainer: ModelContainer?
     /// 当前项目的数据库实例
     @State private var currentProject: Project?
-    
-    /// 左侧章节边栏是否显示
-    @State private var isLeftSidebarVisible: Bool = true
+
     /// 右侧辅助边栏是否显示
     @State private var isRightSidebarVisible: Bool = false
     /// 右侧辅助边栏当前选中的标签
@@ -38,12 +36,12 @@ struct ContentView: View {
     /// 是否进入专注模式
     @State private var isFocusMode = false
     #if os(iOS)
-    /// 是否显示设置面板（iOS 通过 toolbar 按钮触发）
-    @State private var isShowingSettings = false
+        /// 是否显示设置面板（iOS 通过 toolbar 按钮触发）
+        @State private var isShowingSettings = false
     #endif
     /// 是否显示导出面板
     @State private var isShowingExport = false
-    
+
     var body: some View {
         Group {
             if isFocusMode, let project = currentProject, let chapter = selectedChapter {
@@ -61,12 +59,12 @@ struct ContentView: View {
             }
         }
         #if os(macOS)
-        .frame(minWidth: 900, minHeight: 600)
+            .frame(minWidth: 900, minHeight: 600)
         #endif
         #if os(iOS)
-        .sheet(isPresented: $isShowingSettings) {
-            SettingsView()
-        }
+            .sheet(isPresented: $isShowingSettings) {
+                SettingsView()
+            }
         #endif
         .sheet(isPresented: $isShowingExport) {
             if let project = currentProject {
@@ -82,14 +80,14 @@ struct ContentView: View {
         }
 
     }
-    
+
     /// 打开指定 ID 的项目数据库。
     private func openProject(id: UUID) {
         guard let meta = ProjectRegistry.shared.project(withID: id) else {
             selectedProjectID = nil
             return
         }
-        
+
         let schema = Schema([
             Project.self,
             Volume.self,
@@ -101,18 +99,18 @@ struct ContentView: View {
             Note.self,
             ContentBlockRef.self,
         ])
-        
+
         let dbURL = URL(fileURLWithPath: meta.storagePath)
             .appendingPathComponent("NovelCraft.store")
         let config = ModelConfiguration(schema: schema, url: dbURL)
-        
+
         do {
             let container = try ModelContainer(for: schema, configurations: config)
             let context = container.mainContext
-            
+
             let descriptor = FetchDescriptor<Project>()
             let dbProjects = try context.fetch(descriptor)
-            
+
             if let project = dbProjects.first {
                 // 同步注册表中的最新元数据到数据库
                 syncMetaToProject(meta: meta, project: project, context: context)
@@ -140,7 +138,7 @@ struct ContentView: View {
             selectedProjectID = nil
         }
     }
-    
+
     /// 关闭当前项目，清理数据库容器，并将最新统计信息同步到注册表。
     private func closeProject() {
         syncProjectStats()
@@ -148,7 +146,7 @@ struct ContentView: View {
         currentProject = nil
         selectedChapter = nil
     }
-    
+
     /// 将当前项目的字数统计同步到注册表。
     private func syncProjectStats() {
         guard let project = currentProject else { return }
@@ -158,7 +156,7 @@ struct ContentView: View {
         meta.updatedAt = Date()
         ProjectRegistry.shared.updateProject(meta)
     }
-    
+
     /// 将注册表中的元数据同步到项目数据库的 Project 实体。
     private func syncMetaToProject(meta: ProjectMeta, project: Project, context: ModelContext) {
         project.title = meta.title
@@ -169,8 +167,8 @@ struct ContentView: View {
         project.dailyWordGoal = meta.dailyWordGoal
         try? context.save()
     }
-    
-    /// 主编辑界面：NavigationSplitView + 右侧辅助面板。
+
+    /// 主编辑界面：左侧 NavigationSplitView + 右侧 .inspector 检查器面板。
     @ViewBuilder
     private func mainInterface(project: Project) -> some View {
         NavigationSplitView {
@@ -178,10 +176,9 @@ struct ContentView: View {
                 project: project,
                 selectedChapter: $selectedChapter
             )
-            .frame(width: 300)
+            .navigationSplitViewColumnWidth(min: 200, ideal: 280)
         } detail: {
-            HStack(spacing: 0) {
-                // 中间编辑器区域
+            Group {
                 if let chapter = selectedChapter {
                     EditorView(
                         project: project,
@@ -191,27 +188,13 @@ struct ContentView: View {
                 } else {
                     EmptyEditorView(project: project)
                 }
-                
-                // 右侧辅助面板
-                if isRightSidebarVisible {
-                    Divider()
-                    rightSidebar(project: project)
-                        .frame(minWidth: 200, idealWidth: 280)
-                }
+            }
+            .inspector(isPresented: $isRightSidebarVisible) {
+                rightSidebar(project: project)
+                    .inspectorColumnWidth(min: 200, ideal: 280)
             }
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    withAnimation {
-                        isLeftSidebarVisible.toggle()
-                    }
-                } label: {
-                    Image(systemName: isLeftSidebarVisible ? "sidebar.left" : "arrow.forward.to.line")
-                }
-                .help(isLeftSidebarVisible ? "隐藏边栏" : "显示边栏")
-            }
-            
             ToolbarItem(placement: .navigation) {
                 Button {
                     withAnimation {
@@ -223,7 +206,7 @@ struct ContentView: View {
                 }
                 .help("返回项目列表")
             }
-            
+
             ToolbarItem {
                 Button {
                     isFocusMode = true
@@ -233,7 +216,7 @@ struct ContentView: View {
                 .help("专注模式 (⇧⌘F)")
                 .disabled(selectedChapter == nil)
             }
-            
+
             ToolbarItem {
                 Button {
                     isShowingExport = true
@@ -242,31 +225,33 @@ struct ContentView: View {
                 }
                 .help("导出")
             }
-            
+
             #if os(iOS)
-            ToolbarItem {
-                Button {
-                    isShowingSettings = true
-                } label: {
-                    Image(systemName: "gear")
+                ToolbarItem {
+                    Button {
+                        isShowingSettings = true
+                    } label: {
+                        Image(systemName: "gear")
+                    }
+                    .help("设置")
                 }
-                .help("设置")
-            }
             #endif
-            
+
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     withAnimation {
                         isRightSidebarVisible.toggle()
                     }
                 } label: {
-                    Image(systemName: isRightSidebarVisible ? "sidebar.right" : "arrow.backward.to.line")
+                    Image(
+                        systemName: isRightSidebarVisible
+                            ? "sidebar.right" : "arrow.backward.to.line")
                 }
                 .help(isRightSidebarVisible ? "隐藏边栏" : "显示边栏")
             }
         }
     }
-    
+
     /// 右侧辅助面板内容。
     @ViewBuilder
     private func rightSidebar(project: Project) -> some View {
@@ -280,9 +265,9 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
             .padding()
-            
+
             Divider()
-            
+
             // 面板内容
             switch rightSidebarTab {
             case .characters:
@@ -301,17 +286,17 @@ struct ContentView: View {
 /// 未选中章节时展示的占位视图，显示项目统计信息。
 struct EmptyEditorView: View {
     let project: Project?
-    
+
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "doc.text")
                 .font(.system(size: 60))
                 .foregroundStyle(.secondary)
-            
+
             Text("选择一个章节开始写作")
                 .font(.title2)
                 .foregroundStyle(.secondary)
-            
+
             if let project = project {
                 HStack(spacing: 30) {
                     StatCard(title: "总字数", value: "\(project.totalWordCount)")
@@ -328,7 +313,7 @@ struct EmptyEditorView: View {
 struct StatCard: View {
     let title: String
     let value: String
-    
+
     var body: some View {
         VStack(spacing: 8) {
             Text(value)
