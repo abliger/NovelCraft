@@ -19,8 +19,6 @@ struct ChapterTreeView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("章节")
-                    .font(.headline)
                 Spacer()
                 Button {
                     addVolume()
@@ -126,6 +124,7 @@ struct VolumeSection: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .help(isExpanded ? "收起" : "展开")
                 
                 if isRenaming {
                     TextField("卷名", text: $renameText, onCommit: {
@@ -179,6 +178,7 @@ struct VolumeSection: View {
                 }
                 .menuStyle(.borderlessButton)
                 .frame(width: 20)
+                .help("卷操作")
             }
             .padding(.vertical, 4)
             .contentShape(Rectangle())
@@ -235,7 +235,7 @@ struct ChapterRow: View {
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(statusColor)
+                .fill(chapter.chapterStatus.color)
                 .frame(width: 8, height: 8)
             
             if isRenaming {
@@ -290,6 +290,7 @@ struct ChapterRow: View {
             .menuStyle(.borderlessButton)
             .frame(width: 16)
             .opacity(selectedChapter?.id == chapter.id ? 1 : 0)
+            .help("章节操作")
         }
         .padding(.vertical, 2)
         .contextMenu {
@@ -309,13 +310,5 @@ struct ChapterRow: View {
         }
     }
     
-    /// 根据章节状态返回对应的标识颜色
-    private var statusColor: Color {
-        switch chapter.chapterStatus {
-        case .draft: return .gray
-        case .revising: return .orange
-        case .completed: return .green
-        case .archived: return .blue
-        }
-    }
+
 }

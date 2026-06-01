@@ -149,29 +149,11 @@ struct SettingEditView: View {
             }
             .formStyle(.grouped)
             .navigationTitle(setting == nil ? "新建设定" : "编辑设定")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
-                        save()
-                    }
-                    .disabled(title.isEmpty)
-                }
-                if setting != nil {
-                    ToolbarItem(placement: .destructiveAction) {
-                        Button("删除", role: .destructive) {
-                            if let s = setting {
-                                BlockRefEngine.deleteRefs(for: s.id, context: modelContext)
-                                modelContext.delete(s)
-                                try? modelContext.save()
-                            }
-                            dismiss()
-                        }
-                    }
-                }
-            }
+            .formToolbar(
+                isSaveDisabled: title.isEmpty,
+                onSave: save,
+                onDelete: setting != nil ? { deleteSetting() } : nil
+            )
         }
         .frame(minWidth: 500, minHeight: 400)
         .onAppear {
@@ -181,6 +163,15 @@ struct SettingEditView: View {
                 title = s.title
                 content = s.content
             }
+        }
+    }
+    
+    /// 删除设定：清理双向链接引用并删除对象。
+    private func deleteSetting() {
+        if let s = setting {
+            BlockRefEngine.deleteRefs(for: s.id, context: modelContext)
+            modelContext.delete(s)
+            try? modelContext.save()
         }
     }
     

@@ -121,12 +121,7 @@ struct HTMLRenderer {
     }
     
     private func escapeHTML(_ text: String) -> String {
-        var result = text
-        result = result.replacingOccurrences(of: "&", with: "&amp;")
-        result = result.replacingOccurrences(of: "<", with: "&lt;")
-        result = result.replacingOccurrences(of: ">", with: "&gt;")
-        result = result.replacingOccurrences(of: "\"", with: "&quot;")
-        return result
+        text.escapingHTML()
     }
 }
 

@@ -88,17 +88,4 @@ class ProjectRegistry {
     }
 }
 
-/// 清理文件名中的非法字符，防止路径遍历和无效文件名。
-func sanitizeFileName(_ name: String) -> String {
-    var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|.")
-    result = result.components(separatedBy: invalidChars).joined(separator: "-")
-    result = result.replacingOccurrences(of: "..", with: "-")
-    if result.hasPrefix("-") {
-        result = "_" + result
-    }
-    if result.isEmpty {
-        result = "未命名"
-    }
-    return result
-}
+

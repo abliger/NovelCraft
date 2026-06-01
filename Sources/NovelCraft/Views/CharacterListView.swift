@@ -165,29 +165,11 @@ struct CharacterEditView: View {
             }
             .formStyle(.grouped)
             .navigationTitle(character == nil ? "新建角色" : "编辑角色")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
-                        save()
-                    }
-                    .disabled(name.isEmpty)
-                }
-                if character != nil {
-                    ToolbarItem(placement: .destructiveAction) {
-                        Button("删除", role: .destructive) {
-                            if let char = character {
-                                BlockRefEngine.deleteRefs(for: char.id, context: modelContext)
-                                modelContext.delete(char)
-                                try? modelContext.save()
-                            }
-                            dismiss()
-                        }
-                    }
-                }
-            }
+            .formToolbar(
+                isSaveDisabled: name.isEmpty,
+                onSave: save,
+                onDelete: character != nil ? { deleteCharacter() } : nil
+            )
         }
         .frame(minWidth: 500, minHeight: 600)
         .onAppear {
@@ -203,6 +185,15 @@ struct CharacterEditView: View {
                 relationships = char.relationships
                 notes = char.notes
             }
+        }
+    }
+    
+    /// 删除角色：清理双向链接引用并删除对象。
+    private func deleteCharacter() {
+        if let char = character {
+            BlockRefEngine.deleteRefs(for: char.id, context: modelContext)
+            modelContext.delete(char)
+            try? modelContext.save()
         }
     }
     

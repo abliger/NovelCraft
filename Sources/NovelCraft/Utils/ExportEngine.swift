@@ -7,6 +7,21 @@ import UIKit
 #endif
 import ZIPFoundation
 
+/// 清理文件名中的危险字符，防止路径遍历和无效文件名。
+func sanitizeFileName(_ name: String) -> String {
+    var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|.")
+    result = result.components(separatedBy: invalidChars).joined(separator: "-")
+    result = result.replacingOccurrences(of: "..", with: "-")
+    if result.hasPrefix("-") {
+        result = "_" + result
+    }
+    if result.isEmpty {
+        result = "未命名导出"
+    }
+    return result
+}
+
 /// 导出范围枚举，指定导出当前章节或整本小说。
 enum ExportScope {
     case chapter
@@ -106,21 +121,6 @@ struct ExportEngine {
         }
         let sanitized = sanitizeFileName(baseName)
         return "\(sanitized).\(format.fileExtension)"
-    }
-    
-    /// 清理文件名中的危险字符，防止路径遍历和无效文件名。
-    private func sanitizeFileName(_ name: String) -> String {
-        var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|.")
-        result = result.components(separatedBy: invalidChars).joined(separator: "-")
-        result = result.replacingOccurrences(of: "..", with: "-")
-        if result.hasPrefix("-") {
-            result = "_" + result
-        }
-        if result.isEmpty {
-            result = "未命名导出"
-        }
-        return result
     }
     
     /// 去除 Markdown 标记符号，转换为纯文本。

@@ -184,28 +184,11 @@ struct NodeEditView: View {
             }
             .formStyle(.grouped)
             .navigationTitle(node == nil ? "新建节点" : "编辑节点")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
-                        save()
-                    }
-                }
-                if node != nil {
-                    ToolbarItem(placement: .destructiveAction) {
-                        Button("删除", role: .destructive) {
-                            if let n = node {
-                                BlockRefEngine.deleteRefs(for: n.id, context: modelContext)
-                                modelContext.delete(n)
-                                try? modelContext.save()
-                            }
-                            dismiss()
-                        }
-                    }
-                }
-            }
+            .formToolbar(
+                isSaveDisabled: false,
+                onSave: save,
+                onDelete: node != nil ? { deleteNode() } : nil
+            )
         }
         .frame(minWidth: 450, minHeight: 350)
         .onAppear {
@@ -214,6 +197,15 @@ struct NodeEditView: View {
                 content = n.content
                 nodeType = n.nodeType
             }
+        }
+    }
+    
+    /// 删除节点：清理双向链接引用并删除对象。
+    private func deleteNode() {
+        if let n = node {
+            BlockRefEngine.deleteRefs(for: n.id, context: modelContext)
+            modelContext.delete(n)
+            try? modelContext.save()
         }
     }
     

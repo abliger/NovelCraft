@@ -1,21 +1,18 @@
 import SwiftUI
 import SwiftData
 
-/// 侧边栏标签枚举，对应主界面的五个功能模块。
-enum SidebarTab: String, CaseIterable {
-    case chapters = "章节"
+/// 右侧辅助面板标签枚举。
+enum RightPanelTab: String, CaseIterable {
     case characters = "角色"
     case world = "世界观"
     case outline = "大纲"
     case notes = "便签"
     
-    /// 每个标签对应的系统图标名称
     var icon: String {
         switch self {
-        case .chapters: return "list.bullet.rectangle"
         case .characters: return "person.2"
         case .world: return "globe"
-        case .outline: return "diagram.project"
+        case .outline: return "list.bullet.indent"
         case .notes: return "note.text"
         }
     }
@@ -30,8 +27,12 @@ struct ContentView: View {
     /// 当前项目的数据库实例
     @State private var currentProject: Project?
     
-    /// 当前侧边栏选中的标签
-    @State private var selectedTab: SidebarTab = .chapters
+    /// 左侧章节边栏是否显示
+    @State private var isLeftSidebarVisible: Bool = true
+    /// 右侧辅助边栏是否显示
+    @State private var isRightSidebarVisible: Bool = false
+    /// 右侧辅助边栏当前选中的标签
+    @State private var rightSidebarTab: RightPanelTab = .characters
     /// 当前选中的章节
     @State private var selectedChapter: Chapter? = nil
     /// 是否进入专注模式
@@ -79,6 +80,7 @@ struct ContentView: View {
                 closeProject()
             }
         }
+
     }
     
     /// 打开指定 ID 的项目数据库。
@@ -168,15 +170,48 @@ struct ContentView: View {
         try? context.save()
     }
     
-    /// 主编辑界面，包含侧边栏与详情区的 NavigationSplitView。
+    /// 主编辑界面：NavigationSplitView + 右侧辅助面板。
     @ViewBuilder
     private func mainInterface(project: Project) -> some View {
         NavigationSplitView {
-            sidebar(project: project)
+            ChapterTreeView(
+                project: project,
+                selectedChapter: $selectedChapter
+            )
+            .frame(width: 300)
         } detail: {
-            detailView(project: project)
+            HStack(spacing: 0) {
+                // 中间编辑器区域
+                if let chapter = selectedChapter {
+                    EditorView(
+                        project: project,
+                        chapter: chapter
+                    )
+                    .id(chapter.id)
+                } else {
+                    EmptyEditorView(project: project)
+                }
+                
+                // 右侧辅助面板
+                if isRightSidebarVisible {
+                    Divider()
+                    rightSidebar(project: project)
+                        .frame(minWidth: 200, idealWidth: 280)
+                }
+            }
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation {
+                        isLeftSidebarVisible.toggle()
+                    }
+                } label: {
+                    Image(systemName: isLeftSidebarVisible ? "sidebar.left" : "arrow.forward.to.line")
+                }
+                .help(isLeftSidebarVisible ? "隐藏边栏" : "显示边栏")
+            }
+            
             ToolbarItem(placement: .navigation) {
                 Button {
                     withAnimation {
@@ -189,7 +224,6 @@ struct ContentView: View {
                 .help("返回项目列表")
             }
             
-
             ToolbarItem {
                 Button {
                     isFocusMode = true
@@ -219,27 +253,28 @@ struct ContentView: View {
                 .help("设置")
             }
             #endif
+            
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    withAnimation {
+                        isRightSidebarVisible.toggle()
+                    }
+                } label: {
+                    Image(systemName: isRightSidebarVisible ? "sidebar.right" : "arrow.backward.to.line")
+                }
+                .help(isRightSidebarVisible ? "隐藏边栏" : "显示边栏")
+            }
         }
     }
     
-    /// 侧边栏视图，包含分段选择器与对应功能模块列表。
+    /// 右侧辅助面板内容。
     @ViewBuilder
-    private func sidebar(project: Project) -> some View {
+    private func rightSidebar(project: Project) -> some View {
         VStack(spacing: 0) {
-            #if os(macOS)
-            Text(project.title)
-                .font(.headline)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal)
-                .padding(.top, 8)
-                .padding(.bottom, 4)
-            #endif
-            
-            Picker("", selection: $selectedTab) {
-                ForEach(SidebarTab.allCases, id: \.self) { tab in
-                    Label(tab.rawValue, systemImage: tab.icon)
+            // 顶部分段选择器
+            Picker("", selection: $rightSidebarTab) {
+                ForEach(RightPanelTab.allCases, id: \.self) { tab in
+                    Image(systemName: tab.icon)
                         .tag(tab)
                 }
             }
@@ -248,12 +283,8 @@ struct ContentView: View {
             
             Divider()
             
-            switch selectedTab {
-            case .chapters:
-                ChapterTreeView(
-                    project: project,
-                    selectedChapter: $selectedChapter
-                )
+            // 面板内容
+            switch rightSidebarTab {
             case .characters:
                 CharacterListView(project: project)
             case .world:
@@ -263,20 +294,6 @@ struct ContentView: View {
             case .notes:
                 NoteListView(project: project)
             }
-        }
-    }
-    
-    /// 详情区视图，根据是否选中章节展示编辑器或空状态。
-    @ViewBuilder
-    private func detailView(project: Project) -> some View {
-        if let chapter = selectedChapter {
-            EditorView(
-                project: project,
-                chapter: chapter
-            )
-            .id(chapter.id)
-        } else {
-            EmptyEditorView(project: project)
         }
     }
 }

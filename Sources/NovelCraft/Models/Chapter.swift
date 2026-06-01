@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import SwiftUI
 
 /// 章节状态枚举，用于标识章节的写作进度。
 /// UI 显示请使用 `displayName`，rawValue 仅用于持久化，不可更改。
@@ -16,6 +17,16 @@ enum ChapterStatus: String, Codable, CaseIterable {
         case .revising: return "修订中"
         case .completed: return "已完成"
         case .archived: return "已归档"
+        }
+    }
+    
+    /// 状态对应的标识颜色
+    var color: Color {
+        switch self {
+        case .draft: return .gray
+        case .revising: return .orange
+        case .completed: return .green
+        case .archived: return .blue
         }
     }
 }
