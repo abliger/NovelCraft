@@ -105,20 +105,7 @@ struct ContentView: View {
         // 释放旧容器
         closeProject()
 
-        let schema = Schema([
-            Project.self,
-            Volume.self,
-            Chapter.self,
-            StoryScene.self,
-            Character.self,
-            WorldSetting.self,
-            OutlineNode.self,
-            Note.self,
-            ContentBlockRef.self,
-            SpreadsheetSheet.self,
-            SpreadsheetCell.self,
-            TodoItem.self,
-        ])
+        let schema = AppSchema.shared
 
         let dbURL = URL(fileURLWithPath: meta.storagePath)
             .appendingPathComponent("NovelCraft.store")
@@ -192,7 +179,9 @@ struct ContentView: View {
         try? context.save()
     }
 
-    /// 主编辑界面：左侧 NavigationSplitView + 右侧 .inspector 检查器面板。
+    /// 主编辑界面：左侧 NavigationSplitView + 右侧条件渲染的辅助面板。
+    /// 注意：macOS 上 .inspector 在 resize 时存在 AppKit 布局崩溃的已知问题，
+    /// 因此改用 HStack 条件渲染实现右侧边栏。
     @ViewBuilder
     private func mainInterface(project: Project) -> some View {
         NavigationSplitView {
@@ -202,22 +191,27 @@ struct ContentView: View {
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 280)
         } detail: {
-            Group {
-                if isSpreadsheetActive {
-                    SpreadsheetView(project: project)
-                } else if let chapter = selectedChapter {
-                    EditorView(
-                        project: project,
-                        chapter: chapter
-                    )
-                    .id(chapter.id)
-                } else {
-                    EmptyEditorView(project: project)
+            HStack(spacing: 0) {
+                Group {
+                    if isSpreadsheetActive {
+                        SpreadsheetView(project: project)
+                    } else if let chapter = selectedChapter {
+                        EditorView(
+                            project: project,
+                            chapter: chapter
+                        )
+                        .id(chapter.id)
+                    } else {
+                        EmptyEditorView(project: project)
+                    }
                 }
-            }
-            .inspector(isPresented: $isRightSidebarVisible) {
-                rightSidebar(project: project)
-                    .inspectorColumnWidth(min: 200, ideal: 280)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if isRightSidebarVisible {
+                    Divider()
+                    rightSidebar(project: project)
+                        .frame(minWidth: 200, idealWidth: 280, maxWidth: 400)
+                }
             }
         }
         .toolbar {
@@ -274,8 +268,6 @@ struct ContentView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    // macOS 上 .inspector 由 AppKit 驱动，自带系统动画；
-                    // 手动包裹 withAnimation 会在窗口 resize 或拖动分隔条时与内部布局事务冲突，导致崩溃。
                     isRightSidebarVisible.toggle()
                 } label: {
                     Image(
@@ -292,18 +284,28 @@ struct ContentView: View {
     private func rightSidebar(project: Project) -> some View {
         VStack(spacing: 0) {
             // 顶部分段选择器
+            // 注意：macOS 上 .segmented Picker 底层为 NSSegmentedControl，
+            // 在面板宽度变化时极易触发 AppKit 布局断言崩溃，因此统一使用纯 SwiftUI 按钮组。
             let pluginPanels = PluginManager.shared.allSidebarPanels
             if pluginPanels.isEmpty {
-                Picker("", selection: $rightSidebarTab) {
+                HStack(spacing: 4) {
                     ForEach(RightPanelTab.allCases, id: \.self) { tab in
-                        Image(systemName: tab.icon)
-                            .tag(tab)
+                        Button {
+                            selectedPluginPanelID = nil
+                            rightSidebarTab = tab
+                        } label: {
+                            Image(systemName: tab.icon)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(rightSidebarTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
+                                .foregroundStyle(rightSidebarTab == tab ? .primary : .secondary)
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
                 .padding()
             } else {
-                // 当存在插件面板时，使用 Menu 或扩展的 picker
                 pluginTabPicker(pluginPanels: pluginPanels)
                     .padding()
             }

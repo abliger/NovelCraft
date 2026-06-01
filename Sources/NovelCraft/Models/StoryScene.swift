@@ -9,8 +9,10 @@ final class StoryScene {
     /// 场景标题
     var title: String
     /// 场景正文内容
+    @Attribute(.externalStorage)
     var content: String
     /// 在所属章节中的排序序号
+    // 索引由 SwiftData 自动管理
     var order: Int
     /// 创建时间
     var createdAt: Date

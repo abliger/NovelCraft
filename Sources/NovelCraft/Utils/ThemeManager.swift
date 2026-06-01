@@ -1,10 +1,12 @@
 import SwiftUI
 
 /// 应用主题模式枚举，支持跟随系统、浅色与深色三种模式。
-enum AppTheme: Int, CaseIterable {
+enum AppTheme: Int, CaseIterable, Identifiable {
     case system = 0
     case light = 1
     case dark = 2
+    
+    var id: Int { rawValue }
     
     /// 用户界面中显示的主题名称
     var name: String {
@@ -12,6 +14,15 @@ enum AppTheme: Int, CaseIterable {
         case .system: return "跟随系统"
         case .light: return "浅色"
         case .dark: return "深色"
+        }
+    }
+    
+    /// 主题对应的 SF Symbol 图标名称
+    var icon: String {
+        switch self {
+        case .system: return "desktopcomputer"
+        case .light: return "sun.max"
+        case .dark: return "moon"
         }
     }
 }

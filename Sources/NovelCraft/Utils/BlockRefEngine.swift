@@ -9,13 +9,13 @@ enum BlockRefEngine {
     // MARK: - 正则表达式
     
     /// 匹配 ((id)) 或 ((id "锚文本"))
-    static let blockRefPattern: NSRegularExpression? = try? NSRegularExpression(
+    static let blockRefPattern: NSRegularExpression = try! NSRegularExpression(
         pattern: #"\(\(([^)]+)\)\)"#,
         options: []
     )
     
     /// 匹配 {{id}}
-    static let blockEmbedPattern: NSRegularExpression? = try? NSRegularExpression(
+    static let blockEmbedPattern: NSRegularExpression = try! NSRegularExpression(
         pattern: #"\{\{([^}]+)\}\}"#,
         options: []
     )
@@ -31,24 +31,20 @@ enum BlockRefEngine {
         let nsRange = NSRange(text.startIndex..., in: text)
         
         // 扫描 ((...))
-        if let pattern = blockRefPattern {
-            let refMatches = pattern.matches(in: text, options: [], range: nsRange)
-            for match in refMatches {
-                guard let range = Range(match.range(at: 1), in: text) else { continue }
-                let content = String(text[range]).trimmingCharacters(in: .whitespaces)
-                let (id, anchor) = parseRefContent(content)
-                results.append((targetID: id, anchor: anchor, isEmbed: false))
-            }
+        let refMatches = blockRefPattern.matches(in: text, options: [], range: nsRange)
+        for match in refMatches {
+            guard let range = Range(match.range(at: 1), in: text) else { continue }
+            let content = String(text[range]).trimmingCharacters(in: .whitespaces)
+            let (id, anchor) = parseRefContent(content)
+            results.append((targetID: id, anchor: anchor, isEmbed: false))
         }
         
         // 扫描 {{...}}
-        if let pattern = blockEmbedPattern {
-            let embedMatches = pattern.matches(in: text, options: [], range: nsRange)
-            for match in embedMatches {
-                guard let range = Range(match.range(at: 1), in: text) else { continue }
-                let id = String(text[range]).trimmingCharacters(in: .whitespaces)
-                results.append((targetID: id, anchor: nil, isEmbed: true))
-            }
+        let embedMatches = blockEmbedPattern.matches(in: text, options: [], range: nsRange)
+        for match in embedMatches {
+            guard let range = Range(match.range(at: 1), in: text) else { continue }
+            let id = String(text[range]).trimmingCharacters(in: .whitespaces)
+            results.append((targetID: id, anchor: nil, isEmbed: true))
         }
         
         return results
@@ -95,19 +91,23 @@ enum BlockRefEngine {
             for oldRef in oldRefs {
                 context.delete(oldRef)
             }
+            // 立即保存删除操作，避免与新记录混淆
+            try context.save()
         } catch {
             print("删除旧引用记录失败: \(error)")
+            // 删除失败时跳过插入，防止产生重复记录
+            return
         }
         
         // 插入新的引用记录
         for ref in refs {
-            guard UUID(uuidString: ref.targetID) != nil else {
+            guard let targetID = UUID(uuidString: ref.targetID) else {
                 // ID 格式无效，跳过
                 continue
             }
             let newRef = ContentBlockRef(
                 sourceBlockID: sourceBlockID,
-                targetBlockID: UUID(uuidString: ref.targetID)!,
+                targetBlockID: targetID,
                 anchorText: ref.anchor ?? "",
                 refType: ref.isEmbed ? RefType.embed.rawValue : RefType.ref.rawValue
             )

@@ -101,67 +101,53 @@ struct BlockRefSearchView: View {
             }
         }
         .task(id: project.id) {
-            loadAllBlocks()
+            await MainActor.run {
+                loadAllBlocks()
+            }
         }
     }
     
     /// 加载项目中所有可作为内容块的实体。
+    /// 在主线程执行（SwiftData @Model 关系属性访问要求同线程），
+    /// 实际项目中内容块数量通常可控，若数量极大应考虑分页加载。
     private func loadAllBlocks() {
         var blocks: [BlockMeta] = []
         
         // 章节
-        if let volumes = project.volumes {
-            for volume in volumes {
-                blocks.append(BlockMeta(id: volume.id, title: volume.title, type: .volume))
-                if let chapters = volume.chapters {
-                    for chapter in chapters {
-                        blocks.append(BlockMeta(id: chapter.id, title: chapter.title, type: .chapter))
-                    }
-                }
+        for volume in project.volumes {
+            blocks.append(BlockMeta(id: volume.id, title: volume.title, type: .volume))
+            for chapter in volume.chapters {
+                blocks.append(BlockMeta(id: chapter.id, title: chapter.title, type: .chapter))
             }
         }
         
         // 便签
-        if let notes = project.notes {
-            for note in notes {
-                let title = note.title.isEmpty ? "便签" : note.title
-                blocks.append(BlockMeta(id: note.id, title: title, type: .note))
-            }
+        for note in project.notes {
+            let title = note.title.isEmpty ? "便签" : note.title
+            blocks.append(BlockMeta(id: note.id, title: title, type: .note))
         }
         
         // 角色
-        if let characters = project.characters {
-            for character in characters {
-                blocks.append(BlockMeta(id: character.id, title: character.name, type: .character))
-            }
+        for character in project.characters {
+            blocks.append(BlockMeta(id: character.id, title: character.name, type: .character))
         }
         
         // 世界观
-        if let settings = project.worldSettings {
-            for ws in settings {
-                blocks.append(BlockMeta(id: ws.id, title: ws.title, type: .worldSetting))
-            }
+        for ws in project.worldSettings {
+            blocks.append(BlockMeta(id: ws.id, title: ws.title, type: .worldSetting))
         }
         
         // 大纲
-        if let outlineNodes = project.outlineNodes {
-            for node in outlineNodes {
-                let title = node.title.isEmpty ? "大纲卡片" : node.title
-                blocks.append(BlockMeta(id: node.id, title: title, type: .outline))
-            }
+        for node in project.outlineNodes {
+            let title = node.title.isEmpty ? "大纲卡片" : node.title
+            blocks.append(BlockMeta(id: node.id, title: title, type: .outline))
         }
         
         // 场景（也作为独立内容块列出）
-        if let volumes = project.volumes {
-            for volume in volumes {
-                if let chapters = volume.chapters {
-                    for chapter in chapters {
-                        if let scenes = chapter.scenes {
-                            for scene in scenes {
-                                blocks.append(BlockMeta(id: scene.id, title: scene.title, type: .scene))
-                            }
-                        }
-                    }
+        for volume in project.volumes {
+            for chapter in volume.chapters {
+                for scene in chapter.scenes {
+                    blocks.append(BlockMeta(id: scene.id, title: scene.title, type: .scene))
                 }
             }
         }

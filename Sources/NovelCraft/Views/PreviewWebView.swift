@@ -7,6 +7,28 @@ import WebKit
 /// 流程图、时序图、甘特图、五线谱、SVG 图片和原始 HTML 的渲染。
 ///
 /// 使用 loadHTMLString 加载，baseURL 指向项目目录，确保相对路径图片能正确加载。
+/// 将 HTML 模板中的 {{MATHJAX_URL}} 等占位符替换为 CDN 链接或 Bundle 中的本地文件
+private func resolveScriptURLs(in html: String) -> String {
+    var result = html
+    
+    let replacements: [(placeholder: String, resource: String, ext: String, subdir: String)] = [
+        ("{{MATHJAX_URL}}", "mathjax", "js", "js"),
+        ("{{MERMAID_URL}}", "mermaid", "js", "js"),
+        ("{{ABCJS_URL}}", "abcjs", "js", "js"),
+    ]
+    
+    for item in replacements {
+        if let url = Bundle.main.url(forResource: item.resource, withExtension: item.ext, subdirectory: item.subdir) {
+            result = result.replacingOccurrences(of: item.placeholder, with: url.absoluteString)
+        } else {
+            // Bundle 中不存在时清空 script 标签，避免加载当前页面作为 JS
+            result = result.replacingOccurrences(of: "<script src=\"\(item.placeholder)\"></script>", with: "")
+        }
+    }
+    
+    return result
+}
+
 #if os(macOS)
 struct PreviewWebView: NSViewRepresentable {
     let htmlString: String
@@ -22,6 +44,9 @@ struct PreviewWebView: NSViewRepresentable {
     
     func updateNSView(_ webView: WKWebView, context: Context) {
         let resolvedHTML = resolveScriptURLs(in: htmlString)
+        // 仅在 HTML 内容真正变化时才重新加载，避免闪烁和性能损耗
+        guard resolvedHTML != context.coordinator.lastLoadedHTML else { return }
+        context.coordinator.lastLoadedHTML = resolvedHTML
         webView.loadHTMLString(resolvedHTML, baseURL: baseURL)
     }
     
@@ -30,29 +55,7 @@ struct PreviewWebView: NSViewRepresentable {
     }
     
     class Coordinator {
-        let id = UUID().uuidString
-    }
-    
-    /// 将 HTML 模板中的 {{MATHJAX_URL}} 等占位符替换为 CDN 链接或 Bundle 中的本地文件
-    private func resolveScriptURLs(in html: String) -> String {
-        var result = html
-        
-        let replacements: [(placeholder: String, resource: String, ext: String, subdir: String)] = [
-            ("{{MATHJAX_URL}}", "mathjax", "js", "js"),
-            ("{{MERMAID_URL}}", "mermaid", "js", "js"),
-            ("{{ABCJS_URL}}", "abcjs", "js", "js"),
-        ]
-        
-        for item in replacements {
-            if let url = Bundle.main.url(forResource: item.resource, withExtension: item.ext, subdirectory: item.subdir) {
-                result = result.replacingOccurrences(of: item.placeholder, with: url.absoluteString)
-            } else {
-                // Bundle 中不存在时清空 script 标签，避免加载当前页面作为 JS
-                result = result.replacingOccurrences(of: "<script src=\"\(item.placeholder)\"></script>", with: "")
-            }
-        }
-        
-        return result
+        var lastLoadedHTML: String?
     }
 }
 #else
@@ -71,6 +74,9 @@ struct PreviewWebView: UIViewRepresentable {
     
     func updateUIView(_ webView: WKWebView, context: Context) {
         let resolvedHTML = resolveScriptURLs(in: htmlString)
+        // 仅在 HTML 内容真正变化时才重新加载，避免闪烁和性能损耗
+        guard resolvedHTML != context.coordinator.lastLoadedHTML else { return }
+        context.coordinator.lastLoadedHTML = resolvedHTML
         webView.loadHTMLString(resolvedHTML, baseURL: baseURL)
     }
     
@@ -79,27 +85,7 @@ struct PreviewWebView: UIViewRepresentable {
     }
     
     class Coordinator {
-        let id = UUID().uuidString
-    }
-    
-    private func resolveScriptURLs(in html: String) -> String {
-        var result = html
-        
-        let replacements: [(placeholder: String, resource: String, ext: String, subdir: String)] = [
-            ("{{MATHJAX_URL}}", "mathjax", "js", "js"),
-            ("{{MERMAID_URL}}", "mermaid", "js", "js"),
-            ("{{ABCJS_URL}}", "abcjs", "js", "js"),
-        ]
-        
-        for item in replacements {
-            if let url = Bundle.main.url(forResource: item.resource, withExtension: item.ext, subdirectory: item.subdir) {
-                result = result.replacingOccurrences(of: item.placeholder, with: url.absoluteString)
-            } else {
-                result = result.replacingOccurrences(of: "<script src=\"\(item.placeholder)\"></script>", with: "")
-            }
-        }
-        
-        return result
+        var lastLoadedHTML: String?
     }
 }
 #endif

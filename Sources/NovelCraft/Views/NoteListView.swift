@@ -1,6 +1,17 @@
 import SwiftUI
 import SwiftData
 
+/// 便签颜色映射表（文件级共享常量）
+private let noteColorPalette: [(name: String, color: Color)] = [
+    ("yellow", .yellow),
+    ("red", .red),
+    ("green", .green),
+    ("blue", .blue),
+    ("purple", .purple),
+    ("orange", .orange),
+    ("pink", .pink),
+]
+
 /// 便签列表视图：以网格形式展示项目的便签，支持搜索、添加、编辑和置顶操作
 struct NoteListView: View {
     @Environment(\.modelContext) private var modelContext
@@ -29,16 +40,7 @@ struct NoteListView: View {
         }
     }
     
-    /// 便签可选颜色列表，name 用于与模型存储的值匹配
-    private let colors: [(name: String, color: Color)] = [
-        ("yellow", .yellow),
-        ("red", .red),
-        ("green", .green),
-        ("blue", .blue),
-        ("purple", .purple),
-        ("orange", .orange),
-        ("pink", .pink),
-    ]
+
     
     var body: some View {
         VStack(spacing: 0) {
@@ -73,7 +75,7 @@ struct NoteListView: View {
     
     /// 根据颜色名称返回对应的 Color，若未匹配则默认返回黄色
     private func noteColor(_ name: String) -> Color {
-        colors.first { $0.name == name }?.color ?? .yellow
+        noteColorPalette.first { $0.name == name }?.color ?? .yellow
     }
 }
 
@@ -174,16 +176,7 @@ struct NoteEditView: View {
     /// 当前选中的颜色名称
     @State private var selectedColor = "yellow"
     
-    /// 编辑视图中的可选颜色列表
-    private let colors = [
-        ("yellow", Color.yellow),
-        ("red", Color.red),
-        ("green", Color.green),
-        ("blue", Color.blue),
-        ("purple", Color.purple),
-        ("orange", Color.orange),
-        ("pink", Color.pink),
-    ]
+
     
     var body: some View {
         NavigationStack {
@@ -192,7 +185,7 @@ struct NoteEditView: View {
                     TextField("标题", text: $title)
                     
                     HStack(spacing: 12) {
-                        ForEach(colors, id: \.0) { name, color in
+                        ForEach(noteColorPalette, id: \.0) { name, color in
                             Circle()
                                 .fill(color)
                                 .frame(width: 28, height: 28)

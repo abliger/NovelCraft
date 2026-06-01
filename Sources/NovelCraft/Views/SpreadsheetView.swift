@@ -7,8 +7,8 @@ struct SpreadsheetView: View {
     @Environment(\.modelContext) private var modelContext
     let project: Project
 
-    @Query(sort: \SpreadsheetSheet.createdAt) private var allSheets: [SpreadsheetSheet]
-    @Query(sort: \SpreadsheetCell.row) private var allCells: [SpreadsheetCell]
+    @Query private var sheets: [SpreadsheetSheet]
+    @State private var cells: [SpreadsheetCell] = []
 
     @State private var selectedSheet: SpreadsheetSheet?
     /// 当前正在编辑的单元格
@@ -16,13 +16,15 @@ struct SpreadsheetView: View {
     /// 编辑中的临时文本
     @State private var editText: String = ""
 
-    private var sheets: [SpreadsheetSheet] {
-        allSheets.filter { $0.project?.id == project.id }
-    }
-
-    private var cells: [SpreadsheetCell] {
-        guard let sheetID = selectedSheet?.id else { return [] }
-        return allCells.filter { $0.sheet?.id == sheetID }
+    init(project: Project) {
+        self.project = project
+        let projectID = project.id
+        _sheets = Query(
+            filter: #Predicate<SpreadsheetSheet> { sheet in
+                sheet.project?.id == projectID
+            },
+            sort: \.createdAt
+        )
     }
 
     private var cellsByRowCol: [Int: [Int: SpreadsheetCell]] {
@@ -45,11 +47,15 @@ struct SpreadsheetView: View {
             if selectedSheet == nil, let first = sheets.first {
                 selectedSheet = first
             }
+            loadCells()
         }
         .onChange(of: sheets) { _, newSheets in
             if selectedSheet == nil, let first = newSheets.first {
                 selectedSheet = first
             }
+        }
+        .onChange(of: selectedSheet) { _, _ in
+            loadCells()
         }
     }
 
@@ -205,6 +211,22 @@ struct SpreadsheetView: View {
 
     // MARK: - 操作
 
+    /// 根据当前选中的工作表，从数据库按需加载单元格数据。
+    private func loadCells() {
+        guard let sheet = selectedSheet else {
+            cells = []
+            return
+        }
+        let sheetID = sheet.id
+        let descriptor = FetchDescriptor<SpreadsheetCell>(
+            predicate: #Predicate { cell in
+                cell.sheet?.id == sheetID
+            },
+            sortBy: [SortDescriptor(\.row), SortDescriptor(\.column)]
+        )
+        cells = (try? modelContext.fetch(descriptor)) ?? []
+    }
+
     /// 结束当前编辑，如有变更则保存并同步双向链接。
     private func finishEditing() {
         guard let cell = editingCell else { return }
@@ -218,6 +240,7 @@ struct SpreadsheetView: View {
                 context: modelContext
             )
             try? modelContext.save()
+            loadCells()
         }
         editingCell = nil
     }
@@ -235,10 +258,8 @@ struct SpreadsheetView: View {
     private func deleteSheet(_ sheet: SpreadsheetSheet) {
         finishEditing()
         BlockRefEngine.deleteRefs(for: sheet.id, context: modelContext)
-        if let cells = sheet.cells {
-            for cell in cells {
-                BlockRefEngine.deleteRefs(for: cell.id, context: modelContext)
-            }
+        for cell in sheet.cells {
+            BlockRefEngine.deleteRefs(for: cell.id, context: modelContext)
         }
         modelContext.delete(sheet)
         try? modelContext.save()
@@ -252,6 +273,7 @@ struct SpreadsheetView: View {
         guard let sheet = selectedSheet else { return }
         sheet.appendRow(context: modelContext)
         try? modelContext.save()
+        loadCells()
     }
 
     private func addColumn() {
@@ -259,5 +281,6 @@ struct SpreadsheetView: View {
         guard let sheet = selectedSheet else { return }
         sheet.appendColumn(context: modelContext)
         try? modelContext.save()
+        loadCells()
     }
 }

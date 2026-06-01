@@ -15,24 +15,32 @@ final class Character {
     /// 年龄描述
     var age: String
     /// 外貌特征
+    @Attribute(.externalStorage)
     var appearance: String
     /// 性格描述
+    @Attribute(.externalStorage)
     var personality: String
     /// 背景故事
+    @Attribute(.externalStorage)
     var background: String
     /// 目标与动机
+    @Attribute(.externalStorage)
     var goals: String
     /// 与其他角色的关系
+    @Attribute(.externalStorage)
     var relationships: String
     /// 备注
+    @Attribute(.externalStorage)
     var notes: String
     /// 头像二进制数据（可选）
+    @Attribute(.externalStorage)
     var avatarData: Data?
     /// 创建时间
     var createdAt: Date
     /// 最后更新时间
     var updatedAt: Date
     /// 在项目中的排序序号
+    // 索引由 SwiftData 自动管理
     var order: Int
     
     /// 所属项目（反向关系）

@@ -25,12 +25,14 @@ final class ContentBlockRef {
     var sourceBlockID: UUID
     /// 被引用方的内容块 ID
     var targetBlockID: UUID
-    /// 锚文本（用户自定义的显示文本，可为空）
+    /// 锚文本（用户自定义的显示文本，可为空；通常较短，无需外部存储）
     var anchorText: String
     /// 引用类型：ref / embed
     var refType: String
     /// 创建时间
     var createdAt: Date
+    /// 最后更新时间
+    var updatedAt: Date
     
     init(sourceBlockID: UUID, targetBlockID: UUID, anchorText: String = "", refType: String = RefType.ref.rawValue) {
         self.id = UUID()
@@ -39,6 +41,7 @@ final class ContentBlockRef {
         self.anchorText = anchorText
         self.refType = refType
         self.createdAt = Date()
+        self.updatedAt = Date()
     }
     
     /// 引用类型枚举值

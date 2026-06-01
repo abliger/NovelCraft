@@ -5,3 +5,12 @@ DerivedData/
 xcuserdata/
 *.xcodeproj
 *.xcworkspace
+.DS_Store
+*.store
+*.log
+logs/
+tmp/
+temp/
+*.swp
+*.swo
+.env

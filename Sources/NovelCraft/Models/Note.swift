@@ -9,20 +9,21 @@ final class Note {
     /// 便签标题
     var title: String
     /// 便签内容
+    @Attribute(.externalStorage)
     var content: String
+    /// 颜色原始值存储（私有，避免直接修改）
+    private var _colorRaw: String = "yellow"
     /// 颜色标识名称（仅接受预定义值）
     var color: String {
-        didSet {
-            if !Note.validColors.contains(color) {
-                color = "yellow"
-            }
-        }
+        get { _colorRaw }
+        set { _colorRaw = Note.validColors.contains(newValue) ? newValue : "yellow" }
     }
     /// 创建时间
     var createdAt: Date
     /// 最后更新时间
     var updatedAt: Date
     /// 是否置顶
+    // 索引由 SwiftData 自动管理
     var isPinned: Bool
     
     /// 所属项目（反向关系）
@@ -41,7 +42,7 @@ final class Note {
         self.id = UUID()
         self.title = title
         self.content = content
-        self.color = Note.validColors.contains(color) ? color : "yellow"
+        self._colorRaw = Note.validColors.contains(color) ? color : "yellow"
         self.isPinned = isPinned
         self.createdAt = Date()
         self.updatedAt = Date()

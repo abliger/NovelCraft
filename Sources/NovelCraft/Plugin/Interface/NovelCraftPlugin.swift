@@ -103,25 +103,25 @@ final class PluginContext: ObservableObject {
     /// 获取当前项目的所有卷（按 order 排序）。
     func fetchVolumes() -> [Volume] {
         guard let project = currentProject else { return [] }
-        return (project.volumes ?? []).sorted { $0.order < $1.order }
+        return project.volumes.sorted { $0.order < $1.order }
     }
     
     /// 获取当前项目的所有角色。
     func fetchCharacters() -> [Character] {
         guard let project = currentProject else { return [] }
-        return project.characters ?? []
+        return project.characters
     }
     
     /// 获取当前项目的所有世界观设定。
     func fetchWorldSettings() -> [WorldSetting] {
         guard let project = currentProject else { return [] }
-        return project.worldSettings ?? []
+        return project.worldSettings
     }
     
     /// 获取当前项目的所有大纲节点。
     func fetchOutlineNodes() -> [OutlineNode] {
         guard let project = currentProject else { return [] }
-        return project.outlineNodes ?? []
+        return project.outlineNodes
     }
     
     /// 获取指定章节的正文内容。

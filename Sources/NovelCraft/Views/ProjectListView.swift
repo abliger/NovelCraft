@@ -84,9 +84,9 @@ struct ProjectListView: View {
     }
     
     private func deleteProject(_ meta: ProjectMeta) {
-        ProjectRegistry.shared.deleteProject(id: meta.id)
         do {
             try FileManager.default.removeItem(atPath: meta.storagePath)
+            ProjectRegistry.shared.deleteProject(id: meta.id)
         } catch {
             print("删除项目文件夹失败: \(error)")
         }
@@ -100,7 +100,7 @@ struct ProjectListView: View {
                 .font(.title2)
                 .fontWeight(.bold)
             
-            SearchField(text: $searchText)
+            SearchField(text: $searchText, placeholder: "搜索项目...")
                 .frame(maxWidth: 300)
             
             Spacer()
@@ -138,6 +138,8 @@ struct ProjectCard: View {
     var onInfo: () -> Void
     var onDelete: () -> Void
     
+    @State private var coverImageData: Data? = nil
+    
     var body: some View {
         Button {
             selectedProjectID = project.id
@@ -150,10 +152,8 @@ struct ProjectCard: View {
                     
                     Spacer()
                     
-                    let coverPath = (project.storagePath as NSString).appendingPathComponent("cover.png")
-                    if FileManager.default.fileExists(atPath: coverPath),
-                       let coverData = try? Data(contentsOf: URL(fileURLWithPath: coverPath)) {
-                        CoverImagePreview(coverImageData: coverData)
+                    if let coverImageData {
+                        CoverImagePreview(coverImageData: coverImageData)
                             .frame(width: 40, height: 40)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
@@ -203,14 +203,20 @@ struct ProjectCard: View {
                 onDelete()
             }
         }
+        .task(id: project.id) {
+            await loadCover()
+        }
     }
     
-    #if os(macOS)
-    private func loadCoverImage() -> NSImage? {
+    private func loadCover() async {
         let coverPath = (project.storagePath as NSString).appendingPathComponent("cover.png")
-        return NSImage(contentsOfFile: coverPath)
+        guard FileManager.default.fileExists(atPath: coverPath) else { return }
+        // 在后台线程读取封面文件，避免阻塞主线程
+        let data = await Task.detached {
+            try? Data(contentsOf: URL(fileURLWithPath: coverPath))
+        }.value
+        coverImageData = data
     }
-    #endif
 }
 
 /// 项目信息视图，用于查看和编辑已有项目的基本信息、封面、存储位置与写作目标。
@@ -330,15 +336,6 @@ struct ProjectInfoView: View {
         }
     }
     
-    #if os(macOS)
-    private func loadCoverImage() -> NSImage? {
-        let coverPath = (meta.storagePath as NSString).appendingPathComponent("cover.png")
-        if FileManager.default.fileExists(atPath: coverPath) {
-            return NSImage(contentsOfFile: coverPath)
-        }
-        return nil
-    }
-    #endif
     
     private func loadCoverData() {
         let coverPath = (meta.storagePath as NSString).appendingPathComponent("cover.png")
@@ -367,13 +364,9 @@ struct ProjectInfoView: View {
         
         // 同步更新项目数据库中的 Project 实体
         do {
-            let schema = Schema([
-                Project.self, Volume.self, Chapter.self, StoryScene.self,
-                Character.self, WorldSetting.self, OutlineNode.self, Note.self,
-            ])
             let dbURL = URL(fileURLWithPath: meta.storagePath).appendingPathComponent("NovelCraft.store")
-            let config = ModelConfiguration(schema: schema, url: dbURL)
-            let container = try ModelContainer(for: schema, configurations: config)
+            let config = ModelConfiguration(schema: AppSchema.shared, url: dbURL)
+            let container = try ModelContainer(for: AppSchema.shared, configurations: config)
             let context = container.mainContext
             
             let descriptor = FetchDescriptor<Project>()
@@ -547,13 +540,9 @@ struct NewProjectView: View {
                 try coverData.write(to: URL(fileURLWithPath: coverPath))
             }
             
-            let schema = Schema([
-                Project.self, Volume.self, Chapter.self, StoryScene.self,
-                Character.self, WorldSetting.self, OutlineNode.self, Note.self,
-            ])
             let dbURL = URL(fileURLWithPath: projectPath).appendingPathComponent("NovelCraft.store")
-            let config = ModelConfiguration(schema: schema, url: dbURL)
-            let container = try ModelContainer(for: schema, configurations: config)
+            let config = ModelConfiguration(schema: AppSchema.shared, url: dbURL)
+            let container = try ModelContainer(for: AppSchema.shared, configurations: config)
             let context = container.mainContext
             
             let project = Project(
@@ -676,35 +665,4 @@ func selectStorageDirectory(completion: @escaping (String?) -> Void) {
 }
 #endif
 
-/// 通用搜索输入框，带清除按钮。
-struct SearchField: View {
-    @Binding var text: String
-    @FocusState private var isFocused: Bool
-    
-    var body: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("搜索项目...", text: $text)
-                .focused($isFocused)
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(8)
-        .background(Color(.tertiarySystemFill))
-        .cornerRadius(8)
-        .onAppear {
-            // 避免窗口打开时自动聚焦到搜索框
-            DispatchQueue.main.async {
-                isFocused = false
-            }
-        }
-    }
-}
+

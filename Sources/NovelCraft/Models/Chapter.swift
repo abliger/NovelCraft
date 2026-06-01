@@ -39,8 +39,10 @@ final class Chapter {
     /// 章节标题
     var title: String
     /// 章节正文（Markdown 格式）
+    @Attribute(.externalStorage)
     var content: String
     /// 章节状态原始值（String 存储，避免 SwiftData 对 Codable 枚举的兼容性问题）
+    // 索引由 SwiftData 自动管理
     var chapterStatusRaw: String
     /// 章节状态（计算属性，自动转换）
     var chapterStatus: ChapterStatus {
@@ -48,6 +50,7 @@ final class Chapter {
         set { chapterStatusRaw = newValue.rawValue }
     }
     /// 在所属卷中的排序序号
+    // 索引由 SwiftData 自动管理
     var order: Int
     /// 创建时间
     var createdAt: Date
@@ -62,7 +65,7 @@ final class Chapter {
     
     /// 关联的场景列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \StoryScene.chapter)
-    var scenes: [StoryScene]?
+    var scenes: [StoryScene] = []
     
     init(
         title: String = "新章节",
@@ -81,9 +84,10 @@ final class Chapter {
         self.synopsis = synopsis
     }
     
-    /// 计算正文的字数（按字符计数，适合中文）
+    /// 计算正文的字数（过滤空格、换行与常见标点，适合中文写作统计）
     var wordCount: Int {
-        content.count
+        let whitespaceAndPunctuation = CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+        return content.unicodeScalars.filter { !whitespaceAndPunctuation.contains($0) }.count
     }
     
     /// 计算正文的字符总数（含空格与标点）

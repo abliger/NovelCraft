@@ -69,7 +69,7 @@ struct OutlineCard: View {
     
     /// 子节点列表：将当前节点的 children 按 order 排序
     private var children: [OutlineNode] {
-        (node.children ?? []).sorted { $0.order < $1.order }
+        node.children.sorted { $0.order < $1.order }
     }
     
     var body: some View {
@@ -219,7 +219,7 @@ struct NodeEditView: View {
         } else {
             let order: Int
             if let p = parent {
-                order = (p.children ?? []).count
+                order = p.children.count
             } else {
                 order = (project?.outlineNodes ?? []).filter { $0.parent == nil }.count
             }

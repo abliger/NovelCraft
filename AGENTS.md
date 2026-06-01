@@ -16,7 +16,7 @@
 - **数据持久化**: SwiftData（`@Model`、`@Query`、`modelContainer`）
 - **包管理器**: Swift Package Manager（`Package.swift`）
 - **外部依赖**:
-  - [ZIPFoundation](https://github.com/weichsel/ZIPFoundation.git) `0.9.19+`（用于 EPUB 打包时创建 ZIP 文件；注意：当前代码中 EPUB 生成实际使用系统 `/usr/bin/zip` 命令，ZIPFoundation 已声明但未在核心导出逻辑中直接调用）
+  - [ZIPFoundation](https://github.com/weichsel/ZIPFoundation.git) `0.9.19+`（用于 EPUB 打包，通过 `Archive` 类直接创建 ZIP 文件）
 - **最低系统版本**: macOS 14.0, iOS 17.0
 - **Bundle ID**: `com.novelcraft.NovelCraft`
 - **版本**: 1.0.0
@@ -32,7 +32,7 @@ NovelCraft/
 ├── Sources/
 │   └── NovelCraft/
 │       ├── NovelCraftApp.swift          # App 入口，注册 SwiftData ModelContainer
-│       ├── Models/                      # 8 个 SwiftData @Model 实体
+│       ├── Models/                      # 12 个 SwiftData @Model 实体
 │       │   ├── Project.swift            # 小说项目（标题、作者、目标字数等）
 │       │   ├── Volume.swift             # 卷
 │       │   ├── Chapter.swift            # 章节（含状态枚举：草稿/修订中/已完成/已归档）
@@ -40,8 +40,15 @@ NovelCraft/
 │       │   ├── Character.swift          # 角色（外貌、性格、背景、关系等）
 │       │   ├── WorldSetting.swift       # 世界观设定（分类、标题、内容）
 │       │   ├── OutlineNode.swift        # 大纲节点（支持树形 parent/children 及 x/y 坐标）
-│       │   └── Note.swift               # 便签（颜色、置顶）
+│       │   ├── Note.swift               # 便签（颜色、置顶）
+│       │   ├── ContentBlockRef.swift    # 双向链接引用记录
+│       │   ├── SpreadsheetSheet.swift   # 电子表格工作表
+│       │   ├── SpreadsheetCell.swift    # 电子表格单元格
+│       │   └── TodoItem.swift           # 待办事项
 │       ├── Views/                       # 全部 SwiftUI 视图
+│       │   ├── Components/              # 可复用视图组件
+│       │   │   ├── FormToolbar.swift    # 表单工具栏修饰符
+│       │   │   └── SearchField.swift    # 通用搜索输入框
 │       │   ├── ContentView.swift        # 主界面：侧边栏 Tab + 详情区
 │       │   ├── ProjectListView.swift    # 项目列表（卡片网格、搜索、新建）
 │       │   ├── ChapterTreeView.swift    # 卷/章节树形侧边栏（增删改、排序、状态切换）
@@ -52,11 +59,46 @@ NovelCraft/
 │       │   ├── WorldSettingListView.swift # 世界观设定列表与编辑
 │       │   ├── OutlineView.swift        # 大纲视图
 │       │   ├── NoteListView.swift       # 便签列表
-│       │   └── SettingsView.swift       # 设置（主题、字体、行距、自动保存等）
+│       │   ├── SettingsView.swift       # 设置（主题、字体、行距、自动保存等）
+│       │   ├── BacklinkPanelView.swift  # 双向链接面板
+│       │   ├── BlockRefSearchView.swift # 内容块搜索（双向链接插入）
+│       │   ├── DeviceMonitorView.swift  # 设备监控（CPU/内存/GPU/网络）
+│       │   ├── ImageInsertView.swift    # 图片插入（本地/网络）
+│       │   ├── PluginSettingsView.swift # 插件管理
+│       │   ├── PreviewWebView.swift     # Markdown 预览（WKWebView）
+│       │   ├── SpreadsheetView.swift    # 电子表格视图
+│       │   ├── StatBadge.swift          # 统计徽章
+│       │   └── TodoListView.swift       # 待办清单
+│       ├── Markdown/                    # Markdown 解析与渲染引擎
+│       │   ├── Lexer.swift              # Markdown 词法分析器
+│       │   ├── Parser.swift             # Markdown 语法解析器
+│       │   ├── AST.swift                # 抽象语法树定义
+│       │   ├── Renderer.swift           # 渲染器协议
+│       │   ├── HTMLRenderer.swift       # HTML 渲染器
+│       │   └── AsyncEngine.swift        # 异步解析引擎
+│       ├── Editor/                      # 编辑器相关组件
+│       │   ├── BlockEditorView.swift    # 块编辑器视图
+│       │   ├── BlockMarkdownConverter.swift # Markdown 块转换器
+│       │   ├── BlockOutlineView.swift   # 块大纲视图
+│       │   ├── BlockViews.swift         # 块视图组件
+│       │   └── ContentBlock.swift       # 内容块定义
+│       ├── Plugin/                      # 插件系统
+│       │   ├── PluginInterface.swift    # 插件接口定义
+│       │   ├── PluginManager.swift      # 插件管理器
+│       │   ├── TodoListPlugin.swift     # 待办清单插件
+│       │   ├── DeviceMonitorPlugin.swift # 设备监控插件
+│       │   └── ... 其他内置插件
 │       └── Utils/
-│           ├── ProjectRegistry.swift    # 项目注册表（JSON 元数据索引）
+│           ├── ProjectRegistry.swift    # 项目注册表（JSON 元数据索引，含内存缓存）
 │           ├── ExportEngine.swift       # 导出逻辑（Markdown/TXT/PDF/EPUB）
-│           └── ThemeManager.swift       # 主题管理（跟随系统/浅色/深色）
+│           ├── ExportStrategy.swift     # 导出策略模式
+│           ├── ThemeManager.swift       # 主题管理（跟随系统/浅色/深色）
+│           ├── BlockRefEngine.swift     # 双向链接引擎
+│           ├── FileSyncEngine.swift     # 文件同步引擎（章节 .md 文件）
+│           ├── ImageAssetEngine.swift   # 图片资源处理引擎
+│           ├── DeviceStatsEngine.swift  # 设备统计引擎
+│           ├── String+Extensions.swift  # 字符串扩展
+│           └── View+Platform.swift      # 跨平台视图扩展
 └── Tests/
     └── NovelCraftTests/
         └── NovelCraftTests.swift        # XCTest 测试

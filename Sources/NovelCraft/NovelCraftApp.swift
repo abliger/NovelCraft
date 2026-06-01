@@ -23,6 +23,9 @@ struct NovelCraftApp: App {
     private let deviceMonitorState = DeviceMonitorState()
     private let todoListState = TodoListState()
     
+    /// 保存通知观察者的 token，用于生命周期管理
+    private var notificationTokens: [any NSObjectProtocol] = []
+    
     init() {
         setupAutoTimestamps()
         // 必须先注册 MenuBarExtra 通知监听，再注册插件，否则插件 setup 发出的通知会丢失
@@ -66,8 +69,8 @@ struct NovelCraftApp: App {
     }
     
     /// 监听设备监控插件的可见性变化通知。
-    private func setupDeviceMonitorObserver() {
-        NotificationCenter.default.addObserver(
+    private mutating func setupDeviceMonitorObserver() {
+        let token = NotificationCenter.default.addObserver(
             forName: .deviceMonitorVisibilityChanged,
             object: nil,
             queue: .main
@@ -75,11 +78,12 @@ struct NovelCraftApp: App {
             guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
             deviceMonitorState?.isVisible = isVisible
         }
+        notificationTokens.append(token)
     }
     
     /// 监听待办清单插件的可见性变化通知。
-    private func setupTodoListObserver() {
-        NotificationCenter.default.addObserver(
+    private mutating func setupTodoListObserver() {
+        let token = NotificationCenter.default.addObserver(
             forName: .todoListVisibilityChanged,
             object: nil,
             queue: .main
@@ -87,22 +91,26 @@ struct NovelCraftApp: App {
             guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
             todoListState?.isVisible = isVisible
         }
+        notificationTokens.append(token)
     }
     
     /// 注册 Core Data 保存前通知，自动更新所有带 `updatedAt` 字段的模型对象。
-    private func setupAutoTimestamps() {
-        NotificationCenter.default.addObserver(
+    /// 使用 nil queue，直接在发出通知的线程处理，避免主线程调度延迟。
+    private mutating func setupAutoTimestamps() {
+        let token = NotificationCenter.default.addObserver(
             forName: NSNotification.Name("NSManagedObjectContextWillSaveNotification"),
             object: nil,
-            queue: .main
+            queue: nil
         ) { notification in
             guard let moc = notification.object as? NSManagedObjectContext else { return }
-            for object in moc.registeredObjects where object.hasChanges && !object.isDeleted {
+            // 仅遍历已变更的对象，而非全部 registeredObjects，降低性能开销
+            for object in moc.insertedObjects.union(moc.updatedObjects) where !object.isDeleted {
                 if object.entity.attributesByName["updatedAt"] != nil {
                     object.setValue(Date(), forKey: "updatedAt")
                 }
             }
         }
+        notificationTokens.append(token)
     }
 }
 

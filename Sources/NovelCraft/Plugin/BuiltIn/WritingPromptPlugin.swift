@@ -92,8 +92,8 @@ final class WritingPromptPlugin: NovelCraftPlugin, EditorToolbarContributor {
         guard let context = context else { return }
         guard let chapter = context.selectedChapter else { return }
         
-        let category = prompts.randomElement()!
-        let prompt = category.prompts.randomElement()!
+        guard let category = prompts.randomElement(),
+              let prompt = category.prompts.randomElement() else { return }
         let formatted = "\n> 💡 **【\(category.name)】** \(prompt)\n"
         
         chapter.content += formatted

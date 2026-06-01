@@ -9,9 +9,16 @@ struct FileSyncEngine {
         
         // 验证路径安全性：禁止路径中包含 .. 组件，并拒绝相对路径
         let url = URL(fileURLWithPath: storagePath)
-        let resolved = url.resolvingSymlinksInPath().path
-        if resolved.contains("/..") || resolved.hasSuffix("/..") || resolved == ".." {
+        let resolved = url.resolvingSymlinksInPath().standardizedFileURL.path
+        // 检查路径中是否存在 .. 组件（resolvingSymlinksInPath 不会规范化 ..）
+        let pathComponents = resolved.split(separator: "/")
+        if pathComponents.contains("..") || resolved.contains("/../") || resolved.hasSuffix("/..") || resolved == ".." {
             print("文件同步失败: 路径包含非法组件 \(storagePath)")
+            return
+        }
+        // 进一步验证：解析后的路径必须是绝对路径
+        if !resolved.hasPrefix("/") {
+            print("文件同步失败: 路径必须是绝对路径 \(storagePath)")
             return
         }
         

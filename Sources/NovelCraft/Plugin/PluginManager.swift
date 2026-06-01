@@ -11,7 +11,7 @@ final class PluginManager: ObservableObject {
     static let shared = PluginManager()
     
     /// 所有已注册的插件列表。
-    @Published var plugins: [NovelCraftPlugin] = []
+    @Published var plugins: [any NovelCraftPlugin] = []
     
     /// 内置插件 ID 集合（用于标记不可删除的官方插件）。
     private var builtInPluginIDs: Set<String> = []
@@ -21,11 +21,11 @@ final class PluginManager: ObservableObject {
     
     // MARK: 按能力分类的缓存（提升查找效率）
     
-    private var toolbarContributors: [EditorToolbarContributor] = []
-    private var exportContributors: [ExportFormatContributor] = []
-    private var sidebarContributors: [SidebarPanelContributor] = []
-    private var contentProcessors: [ContentProcessor] = []
-    private var chapterActionContributors: [ChapterActionContributor] = []
+    private var toolbarContributors: [any EditorToolbarContributor] = []
+    private var exportContributors: [any ExportFormatContributor] = []
+    private var sidebarContributors: [any SidebarPanelContributor] = []
+    private var contentProcessors: [any ContentProcessor] = []
+    private var chapterActionContributors: [any ChapterActionContributor] = []
     
     private init() {}
     
@@ -33,7 +33,7 @@ final class PluginManager: ObservableObject {
     
     /// 注册一个插件实例。
     /// - Parameter isBuiltIn: 是否为内置插件，内置插件不可删除但可禁用。
-    func register(_ plugin: NovelCraftPlugin, isBuiltIn: Bool = false) {
+    func register(_ plugin: any NovelCraftPlugin, isBuiltIn: Bool = false) {
         guard !plugins.contains(where: { $0.id == plugin.id }) else { return }
         plugins.append(plugin)
         if isBuiltIn {
@@ -49,7 +49,7 @@ final class PluginManager: ObservableObject {
     }
     
     /// 注销一个插件实例。
-    func unregister(_ plugin: NovelCraftPlugin) {
+    func unregister(_ plugin: any NovelCraftPlugin) {
         plugin.teardown()
         plugins.removeAll { $0.id == plugin.id }
         unclassify(plugin)
@@ -63,7 +63,7 @@ final class PluginManager: ObservableObject {
     }
     
     /// 切换插件的启用状态。
-    func togglePlugin(_ plugin: NovelCraftPlugin) {
+    func togglePlugin(_ plugin: any NovelCraftPlugin) {
         plugin.isEnabled.toggle()
         if plugin.isEnabled {
             classify(plugin)
@@ -133,7 +133,7 @@ final class PluginManager: ObservableObject {
     }
     
     /// 查找支持指定格式的导出插件。
-    func exportContributor(for formatID: String) -> ExportFormatContributor? {
+    func exportContributor(for formatID: String) -> (any ExportFormatContributor)? {
         exportContributors.first { contributor in
             contributor.isEnabled && contributor.supportedFormats.contains(where: { $0.id == formatID })
         }
@@ -141,35 +141,35 @@ final class PluginManager: ObservableObject {
     
     // MARK: 私有辅助方法
     
-    private func classify(_ plugin: NovelCraftPlugin) {
-        if let contributor = plugin as? EditorToolbarContributor {
+    private func classify(_ plugin: any NovelCraftPlugin) {
+        if let contributor = plugin as? any EditorToolbarContributor {
             if !toolbarContributors.contains(where: { $0.id == contributor.id }) {
                 toolbarContributors.append(contributor)
             }
         }
-        if let contributor = plugin as? ExportFormatContributor {
+        if let contributor = plugin as? any ExportFormatContributor {
             if !exportContributors.contains(where: { $0.id == contributor.id }) {
                 exportContributors.append(contributor)
             }
         }
-        if let contributor = plugin as? SidebarPanelContributor {
+        if let contributor = plugin as? any SidebarPanelContributor {
             if !sidebarContributors.contains(where: { $0.id == contributor.id }) {
                 sidebarContributors.append(contributor)
             }
         }
-        if let processor = plugin as? ContentProcessor {
+        if let processor = plugin as? any ContentProcessor {
             if !contentProcessors.contains(where: { $0.id == processor.id }) {
                 contentProcessors.append(processor)
             }
         }
-        if let contributor = plugin as? ChapterActionContributor {
+        if let contributor = plugin as? any ChapterActionContributor {
             if !chapterActionContributors.contains(where: { $0.id == contributor.id }) {
                 chapterActionContributors.append(contributor)
             }
         }
     }
     
-    private func unclassify(_ plugin: NovelCraftPlugin) {
+    private func unclassify(_ plugin: any NovelCraftPlugin) {
         toolbarContributors.removeAll { $0.id == plugin.id }
         exportContributors.removeAll { $0.id == plugin.id }
         sidebarContributors.removeAll { $0.id == plugin.id }

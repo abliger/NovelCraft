@@ -36,6 +36,8 @@ struct EditorView: View {
     @State private var showBacklinkPanel = false
     /// 当前章节的正向引用列表
     @State private var forwardRefs: [ContentBlockRef] = []
+    /// 缓存的插件工具栏项，避免每次 body 评估重新计算
+    @State private var toolbarItems: [PluginToolbarItem] = []
     /// 是否显示图片插入面板
     @State private var showImageInsert = false
     /// 图片处理方式（从设置读取）
@@ -112,6 +114,7 @@ struct EditorView: View {
             editorText = chapter.content
             updatePreview()
             loadForwardRefs()
+            toolbarItems = PluginManager.shared.allToolbarItems
         }
         .onDisappear {
             saveTask?.cancel()
@@ -248,9 +251,8 @@ struct EditorView: View {
     /// 插件贡献的工具栏按钮区域。
     @ViewBuilder
     private var pluginToolbarItems: some View {
-        let items = PluginManager.shared.allToolbarItems
-        if !items.isEmpty {
-            ForEach(items, id: \.id) { item in
+        if !toolbarItems.isEmpty {
+            ForEach(toolbarItems, id: \.id) { item in
                 Button {
                     item.action()
                 } label: {

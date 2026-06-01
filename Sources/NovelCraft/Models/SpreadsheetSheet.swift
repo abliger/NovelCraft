@@ -9,8 +9,10 @@ final class SpreadsheetSheet {
     /// 工作表标题
     var title: String
     /// 行数
+    // 索引由 SwiftData 自动管理
     var rowCount: Int
     /// 列数
+    // 索引由 SwiftData 自动管理
     var columnCount: Int
     /// 创建时间
     var createdAt: Date
@@ -19,7 +21,7 @@ final class SpreadsheetSheet {
 
     /// 关联的单元格列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \SpreadsheetCell.sheet)
-    var cells: [SpreadsheetCell]?
+    var cells: [SpreadsheetCell] = []
 
     /// 所属项目（反向关系）
     @Relationship(deleteRule: .nullify)

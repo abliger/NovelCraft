@@ -13,12 +13,14 @@ enum ImageAssetEngine {
     }
     
     /// 返回项目的图片资源目录 URL（storagePath/assets/images/）
-    static func assetsDirectory(for project: Project) -> URL {
+    static func assetsDirectory(for project: Project) -> URL? {
         let baseURL = URL(fileURLWithPath: project.storagePath)
-        let resolved = baseURL.resolvingSymlinksInPath().path
+        let resolved = baseURL.resolvingSymlinksInPath().standardizedFileURL.path
         // 拒绝包含 .. 组件的路径，防止路径遍历
-        if resolved.contains("/..") || resolved.hasSuffix("/..") || resolved == ".." {
-            fatalError("非法存储路径: \(project.storagePath)")
+        let pathComponents = resolved.split(separator: "/")
+        if pathComponents.contains("..") || resolved.contains("/../") || resolved.hasSuffix("/..") || resolved == ".." || !resolved.hasPrefix("/") {
+            print("非法存储路径，拒绝访问: \(project.storagePath)")
+            return nil
         }
         return baseURL.appendingPathComponent("assets/images", isDirectory: true)
     }
@@ -26,7 +28,7 @@ enum ImageAssetEngine {
     /// 确保项目的图片资源目录存在
     @discardableResult
     static func ensureAssetsDirectory(for project: Project) -> URL? {
-        let dir = assetsDirectory(for: project)
+        guard let dir = assetsDirectory(for: project) else { return nil }
         do {
             try FileManager.default.createDirectory(
                 at: dir,
@@ -57,7 +59,7 @@ enum ImageAssetEngine {
     /// - Returns: 成功返回相对路径（如 `assets/images/xxx.png`），失败返回 nil
     static func copyLocalImage(url: URL, project: Project) -> String? {
         guard ensureAssetsDirectory(for: project) != nil else { return nil }
-        let assetsDir = assetsDirectory(for: project)
+        guard let assetsDir = assetsDirectory(for: project) else { return nil }
         let fileName = generateUniqueFileName(original: url.lastPathComponent)
         let destination = assetsDir.appendingPathComponent(fileName)
         
@@ -78,7 +80,7 @@ enum ImageAssetEngine {
     /// - Returns: 成功返回相对路径（如 `assets/images/xxx.png`），失败返回 nil
     static func downloadWebImage(url: URL, project: Project) async -> String? {
         guard ensureAssetsDirectory(for: project) != nil else { return nil }
-        let assetsDir = assetsDirectory(for: project)
+        guard let assetsDir = assetsDirectory(for: project) else { return nil }
         let fileName = generateUniqueFileName(original: url.lastPathComponent)
         let destination = assetsDir.appendingPathComponent(fileName)
         

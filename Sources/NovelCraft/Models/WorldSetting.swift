@@ -7,12 +7,15 @@ final class WorldSetting {
     @Attribute(.unique) var id: UUID
     
     /// 设定分类
+    // 索引由 SwiftData 自动管理
     var category: String
     /// 设定标题
     var title: String
     /// 设定详细内容
+    @Attribute(.externalStorage)
     var content: String
     /// 在项目中的排序序号
+    // 索引由 SwiftData 自动管理
     var order: Int
     /// 创建时间
     var createdAt: Date

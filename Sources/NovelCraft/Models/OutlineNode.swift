@@ -9,14 +9,17 @@ final class OutlineNode {
     /// 节点标题
     var title: String
     /// 节点内容描述
+    @Attribute(.externalStorage)
     var content: String
     /// 在同级节点中的排序序号
+    // 索引由 SwiftData 自动管理
     var order: Int
     /// 创建时间
     var createdAt: Date
     /// 最后更新时间
     var updatedAt: Date
     /// 节点类型（如 card / chapter / plot / arc）
+    // 索引由 SwiftData 自动管理
     var nodeType: String
     /// 在画布中的 X 坐标
     var x: Double
@@ -27,13 +30,13 @@ final class OutlineNode {
     @Relationship(deleteRule: .nullify)
     var project: Project?
     
-    /// 父节点（反向关系）
+    /// 父节点（反向关系，由 children 的 inverse 自动维护）
     @Relationship(deleteRule: .nullify)
     var parent: OutlineNode?
     
     /// 子节点列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \OutlineNode.parent)
-    var children: [OutlineNode]?
+    var children: [OutlineNode] = []
     
     init(
         title: String = "",

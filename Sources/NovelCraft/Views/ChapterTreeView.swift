@@ -76,7 +76,7 @@ struct ChapterTreeView: View {
     /// 在最后一个卷中新建一个章节
     private func addChapter() {
         guard let volume = sortedVolumes.last else { return }
-        let order = (volume.chapters ?? []).count
+        let order = volume.chapters.count
         let chapter = Chapter(title: "第\(order + 1)章", order: order)
         chapter.volume = volume
         modelContext.insert(chapter)
@@ -99,7 +99,7 @@ struct VolumeSection: View {
     
     /// 按 order 排序后的章节列表
     private var sortedChapters: [Chapter] {
-        (volume.chapters ?? []).sorted { $0.order < $1.order }
+        volume.chapters.sorted { $0.order < $1.order }
     }
     
     var body: some View {

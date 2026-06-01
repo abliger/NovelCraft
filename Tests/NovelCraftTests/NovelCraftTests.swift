@@ -57,14 +57,15 @@ final class NovelCraftTests: XCTestCase {
         XCTAssertEqual(draft.chapterStatus.displayName, "草稿")
     }
     
-    /// 验证 Chapter 字数统计（按字符计数）。
+    /// 验证 Chapter 字数统计（字数过滤标点，字符数包含标点）。
     func testChapterWordCount() {
         let chapter = Chapter(title: "测试", content: "这是一段测试内容。")
-        XCTAssertEqual(chapter.wordCount, 9)
-        XCTAssertEqual(chapter.characterCount, 9)
+        XCTAssertEqual(chapter.wordCount, 8)   // 过滤了句号
+        XCTAssertEqual(chapter.characterCount, 9) // 包含标点
         
         let empty = Chapter(title: "空")
         XCTAssertEqual(empty.wordCount, 0)
+        XCTAssertEqual(empty.characterCount, 0)
     }
     
     /// 验证 StoryScene 基本属性。

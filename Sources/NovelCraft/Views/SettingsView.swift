@@ -5,8 +5,8 @@ struct SettingsView: View {
     
     // MARK: - AppStorage 偏好设置
     
-    /// 主题模式：0 跟随系统，1 浅色，2 深色
-    @AppStorage("themeMode") private var themeMode = 0
+    /// 主题模式：跟随系统 / 浅色 / 深色
+    @AppStorage(ThemeManager.themeModeKey) private var themeMode: AppTheme = .system
     /// 编辑器字体大小（pt）
     @AppStorage("editorFontSize") private var editorFontSize: Double = 16
     /// 编辑器行间距（pt）
@@ -52,10 +52,12 @@ struct SettingsView: View {
             // MARK: - 外观
             Section("外观") {
                 Picker("主题", selection: $themeMode) {
-                    Text("跟随系统").tag(0)
-                    Text("浅色").tag(1)
-                    Text("深色").tag(2)
+                    ForEach(AppTheme.allCases) { theme in
+                        Label(theme.name, systemImage: theme.icon)
+                            .tag(theme)
+                    }
                 }
+                .pickerStyle(.segmented)
                 
                 HStack {
                     Text("编辑器字体大小")

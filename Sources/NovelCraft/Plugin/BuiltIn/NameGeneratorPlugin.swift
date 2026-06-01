@@ -116,29 +116,29 @@ final class NameGeneratorPlugin: NovelCraftPlugin, EditorToolbarContributor, Sid
     func generateName(style: NameStyle) -> String {
         switch style {
         case .chinese:
-            let surname = chineseSurnames.randomElement()!
+            guard let surname = chineseSurnames.randomElement() else { return "" }
             let roll = Int.random(in: 0...2)
             let namePart: String
             switch roll {
-            case 0: namePart = chineseMaleNames.randomElement()!
-            case 1: namePart = chineseFemaleNames.randomElement()!
-            default: namePart = chineseNeutralNames.randomElement()!
+            case 0: namePart = chineseMaleNames.randomElement() ?? ""
+            case 1: namePart = chineseFemaleNames.randomElement() ?? ""
+            default: namePart = chineseNeutralNames.randomElement() ?? ""
             }
             if Bool.random() {
-                let second = chineseNeutralNames.randomElement()!
+                guard let second = chineseNeutralNames.randomElement() else { return surname + namePart }
                 return surname + namePart + second
             }
             return surname + namePart
             
         case .western:
-            let first = westernFirstNames.randomElement()!
-            let last = westernLastNames.randomElement()!
+            guard let first = westernFirstNames.randomElement(),
+                  let last = westernLastNames.randomElement() else { return "" }
             return "\(first) \(last)"
             
         case .fantasy:
-            let prefix = fantasyPrefixes.randomElement()!
-            let suffix = fantasySuffixes.randomElement()!
-            let title = fantasyTitles.randomElement()!
+            guard let prefix = fantasyPrefixes.randomElement(),
+                  let suffix = fantasySuffixes.randomElement(),
+                  let title = fantasyTitles.randomElement() else { return "" }
             let base = prefix + suffix
             if title.isEmpty {
                 return base

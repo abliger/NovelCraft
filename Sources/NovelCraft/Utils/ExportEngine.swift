@@ -8,18 +8,11 @@ import UIKit
 import ZIPFoundation
 
 /// 清理文件名中的危险字符，防止路径遍历和无效文件名。
+/// 委托给 `String.sanitizedFileName()` 以保持单一实现。
 func sanitizeFileName(_ name: String) -> String {
-    var result = name.trimmingCharacters(in: .whitespacesAndNewlines)
-    let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|.")
-    result = result.components(separatedBy: invalidChars).joined(separator: "-")
-    result = result.replacingOccurrences(of: "..", with: "-")
-    if result.hasPrefix("-") {
-        result = "_" + result
-    }
-    if result.isEmpty {
-        result = "未命名导出"
-    }
-    return result
+    let sanitized = name.sanitizedFileName()
+    // 扩展方法默认返回 "未命名"，全局函数要求导出场景下返回 "未命名导出"
+    return sanitized == "未命名" ? "未命名导出" : sanitized
 }
 
 /// 导出范围枚举，指定导出当前章节或整本小说。
@@ -37,14 +30,56 @@ enum ExportError: Error {
     case noChapterSelected
 }
 
+/// 导出数据快照，将 SwiftData 模型中的数据提取为值类型，确保线程安全。
+struct ExportProjectSnapshot {
+    let title: String
+    let author: String
+    let summary: String
+    let chapterTitle: String?
+    let chapterContent: String?
+    let volumes: [ExportVolumeSnapshot]
+}
+
+struct ExportVolumeSnapshot {
+    let title: String
+    let order: Int
+    let chapters: [ExportChapterSnapshot]
+}
+
+struct ExportChapterSnapshot {
+    let title: String
+    let order: Int
+    let content: String
+}
+
 /// 导出引擎，负责将项目或章节内容导出为 Markdown、纯文本、PDF 或 EPUB 格式。
+///
+/// 内部使用值类型快照存储数据，可在任意线程（如后台 Task）安全使用。
 struct ExportEngine {
-    let project: Project
-    let chapter: Chapter?
+    private let snapshot: ExportProjectSnapshot
+    
+    init(project: Project, chapter: Chapter?) {
+        self.snapshot = ExportProjectSnapshot(
+            title: project.title,
+            author: project.author,
+            summary: project.summary,
+            chapterTitle: chapter?.title,
+            chapterContent: chapter?.content,
+            volumes: project.volumes.sorted { $0.order < $1.order }.map { volume in
+                ExportVolumeSnapshot(
+                    title: volume.title,
+                    order: volume.order,
+                    chapters: volume.chapters.sorted { $0.order < $1.order }.map { ch in
+                        ExportChapterSnapshot(title: ch.title, order: ch.order, content: ch.content)
+                    }
+                )
+            }
+        )
+    }
     
     /// 执行导出操作，将内容写入临时目录并返回生成的文件 URL。
     func export(format: ExportFormat, scope: ExportScope, includeMetadata: Bool) throws -> URL {
-        if scope == .chapter && chapter == nil {
+        if scope == .chapter && snapshot.chapterTitle == nil {
             throw ExportError.noChapterSelected
         }
         
@@ -75,12 +110,12 @@ struct ExportEngine {
         var parts: [String] = []
         
         if includeMetadata {
-            parts.append("# \(project.title)")
-            if !project.author.isEmpty {
-                parts.append("**作者**: \(project.author)")
+            parts.append("# \(snapshot.title)")
+            if !snapshot.author.isEmpty {
+                parts.append("**作者**: \(snapshot.author)")
             }
-            if !project.summary.isEmpty {
-                parts.append("**简介**: \(project.summary)")
+            if !snapshot.summary.isEmpty {
+                parts.append("**简介**: \(snapshot.summary)")
             }
             parts.append("")
             parts.append("---")
@@ -89,17 +124,15 @@ struct ExportEngine {
         
         switch scope {
         case .chapter:
-            if let chapter = chapter {
-                parts.append("## \(chapter.title)")
-                parts.append(chapter.content)
+            if let title = snapshot.chapterTitle, let content = snapshot.chapterContent {
+                parts.append("## \(title)")
+                parts.append(content)
             }
         case .fullProject:
-            let volumes = (project.volumes ?? []).sorted { $0.order < $1.order }
-            for volume in volumes {
+            for volume in snapshot.volumes {
                 parts.append("# \(volume.title)")
                 parts.append("")
-                let chapters = (volume.chapters ?? []).sorted { $0.order < $1.order }
-                for chapter in chapters {
+                for chapter in volume.chapters {
                     parts.append("## \(chapter.title)")
                     parts.append(chapter.content)
                     parts.append("")
@@ -115,32 +148,48 @@ struct ExportEngine {
         let baseName: String
         switch scope {
         case .chapter:
-            baseName = chapter?.title ?? "chapter"
+            baseName = snapshot.chapterTitle ?? "chapter"
         case .fullProject:
-            baseName = project.title
+            baseName = snapshot.title
         }
         let sanitized = sanitizeFileName(baseName)
         return "\(sanitized).\(format.fileExtension)"
     }
     
+    // MARK: - 静态正则常量，避免每次调用重复编译
+
+    private static let heading1Regex = try! NSRegularExpression(pattern: "^# ", options: .anchorsMatchLines)
+    private static let heading2Regex = try! NSRegularExpression(pattern: "^## ", options: .anchorsMatchLines)
+    private static let heading3Regex = try! NSRegularExpression(pattern: "^### ", options: .anchorsMatchLines)
+    private static let heading4Regex = try! NSRegularExpression(pattern: "^#### ", options: .anchorsMatchLines)
+    private static let heading5Regex = try! NSRegularExpression(pattern: "^##### ", options: .anchorsMatchLines)
+    private static let heading6Regex = try! NSRegularExpression(pattern: "^###### ", options: .anchorsMatchLines)
+    private static let codeFenceRegex = try! NSRegularExpression(pattern: "^```\\s*$", options: .anchorsMatchLines)
+    private static let quoteRegex = try! NSRegularExpression(pattern: "^> ", options: .anchorsMatchLines)
+    private static let listRegex = try! NSRegularExpression(pattern: "^- ", options: .anchorsMatchLines)
+    private static let hrRegex = try! NSRegularExpression(pattern: "^---\\s*$", options: .anchorsMatchLines)
+    private static let boldRegex = try! NSRegularExpression(pattern: "\\*\\*(.+?)\\*\\*", options: .dotMatchesLineSeparators)
+    private static let italicRegex = try! NSRegularExpression(pattern: "\\*(.+?)\\*", options: .dotMatchesLineSeparators)
+    private static let blockRefAnchorRegex = try! NSRegularExpression(pattern: #"\(\([^)]+\"([^\"]+)\"\)\)"#, options: [])
+    private static let blockRefRegex = try! NSRegularExpression(pattern: #"\(\([^)]+\)\)"#, options: [])
+    private static let blockEmbedRegex = try! NSRegularExpression(pattern: #"\{\{[^}]+\}\}"#, options: [])
+
     /// 去除 Markdown 标记符号，转换为纯文本。
     private func stripMarkdown(_ text: String) -> String {
         var result = text
-        // 使用行首锚定，避免破坏正文中的合法字符组合
-        result = result.replacingOccurrences(of: "^# ", with: "", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^## ", with: "", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^### ", with: "", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^#### ", with: "", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^##### ", with: "", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^###### ", with: "", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^```\\s*$", with: "", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^> ", with: "", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^- ", with: "• ", options: .regularExpression)
-        result = result.replacingOccurrences(of: "^---\\s*$", with: "", options: .regularExpression)
-        // 精确移除 Markdown 粗体/斜体标记，避免破坏非 Markdown 星号内容
-        result = result.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "$1", options: .regularExpression)
-        result = result.replacingOccurrences(of: "\\*(.+?)\\*", with: "$1", options: .regularExpression)
-        // 去除块引用语法，保留锚文本
+        // 使用预编译的正则表达式，避免重复编译开销
+        result = Self.heading1Regex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.heading2Regex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.heading3Regex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.heading4Regex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.heading5Regex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.heading6Regex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.codeFenceRegex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.quoteRegex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.listRegex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "• ")
+        result = Self.hrRegex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        result = Self.boldRegex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "$1")
+        result = Self.italicRegex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "$1")
         result = stripBlockRefs(result)
         return result
     }
@@ -148,20 +197,19 @@ struct ExportEngine {
     /// 将块引用 ((id "锚文本")) 和嵌入 {{id}} 转换为纯文本。
     private func stripBlockRefs(_ text: String) -> String {
         var result = text
+        let nsRange = NSRange(location: 0, length: result.utf16.count)
         // ((id "锚文本")) -> 锚文本
-        if let pattern = try? NSRegularExpression(pattern: #"\(\([^)]+\"([^\"]+)\"\)\)"#, options: []) {
-            let matches = pattern.matches(in: result, options: [], range: NSRange(result.startIndex..., in: result))
-            for match in matches.reversed() {
-                if let anchorRange = Range(match.range(at: 1), in: result) {
-                    let anchor = String(result[anchorRange])
-                    result = (result as NSString).replacingCharacters(in: match.range, with: anchor)
-                }
+        let matches = Self.blockRefAnchorRegex.matches(in: result, options: [], range: nsRange)
+        for match in matches.reversed() {
+            if let anchorRange = Range(match.range(at: 1), in: result) {
+                let anchor = String(result[anchorRange])
+                result = (result as NSString).replacingCharacters(in: match.range, with: anchor)
             }
         }
         // ((id)) -> [引用]
-        result = result.replacingOccurrences(of: #"\(\([^)]+\)\)"#, with: "[引用]", options: .regularExpression)
+        result = Self.blockRefRegex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "[引用]")
         // {{id}} -> [嵌入]
-        result = result.replacingOccurrences(of: #"\{\{[^}]+\}\}"#, with: "[嵌入]", options: .regularExpression)
+        result = Self.blockEmbedRegex.stringByReplacingMatches(in: result, options: [], range: NSRange(location: 0, length: result.utf16.count), withTemplate: "[嵌入]")
         return result
     }
     
@@ -276,7 +324,7 @@ struct ExportEngine {
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-    <title>\(escapeXML(project.title))</title>
+    <title>\(escapeXML(snapshot.title))</title>
     <meta charset="UTF-8"/>
 </head>
 <body>
@@ -290,8 +338,8 @@ struct ExportEngine {
 <?xml version="1.0" encoding="UTF-8"?>
 <package version="3.0" xmlns="http://www.idpf.org/2007/opf">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-        <dc:title>\(escapeXML(project.title))</dc:title>
-        <dc:creator>\(escapeXML(project.author))</dc:creator>
+        <dc:title>\(escapeXML(snapshot.title))</dc:title>
+        <dc:creator>\(escapeXML(snapshot.author))</dc:creator>
         <dc:language>zh-CN</dc:language>
     </metadata>
     <manifest>
@@ -337,93 +385,11 @@ struct ExportEngine {
         }
     }
     
-    /// 将简易 Markdown 转换为 HTML，支持标题、粗体、斜体、代码块、引用与列表。
+    /// 将 Markdown 文本转换为 HTML，使用项目内建的 AST 解析器与渲染器。
     private func convertToHTML(_ markdown: String) -> String {
-        var html = markdown
-        
-        // 1. 先处理块引用和嵌入（在 escapeHTML 之前，避免引号被转义）
-        // 块引用 ((id "锚文本")) -> 锚文本
-        if let refPattern = try? NSRegularExpression(pattern: #"\(\(([^)]+)\"([^\"]+)\"\)\)"#, options: []) {
-            let matches = refPattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
-            for match in matches.reversed() {
-                let anchor = (html as NSString).substring(with: match.range(at: 2))
-                html = (html as NSString).replacingCharacters(in: match.range, with: escapeHTML(anchor))
-            }
-        }
-        // 块引用 ((id)) -> [引用]
-        html = html.replacingOccurrences(of: #"\(\([^)]+\)\)"#, with: "<span style=\"color:purple\">[引用]</span>", options: .regularExpression)
-        // 块嵌入 {{id}} -> [嵌入]
-        html = html.replacingOccurrences(of: #"\{\{[^}]+\}\}"#, with: "<span style=\"color:blue\">[嵌入]</span>", options: .regularExpression)
-        
-        // 2. 再对剩余文本进行 HTML 转义
-        html = escapeHTML(html)
-        
-        let headingPattern = try? NSRegularExpression(pattern: "^(#{1,6})\\s+(.+)$", options: .anchorsMatchLines)
-        if let pattern = headingPattern {
-            let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
-            for match in matches.reversed() {
-                let level = (html as NSString).substring(with: match.range(at: 1)).count
-                let text = (html as NSString).substring(with: match.range(at: 2))
-                let replacement = "<h\(level)>\(text)</h\(level)>"
-                html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
-            }
-        }
-        
-        html = html.replacingOccurrences(of: "\\*\\*(.+?)\\*\\*", with: "<strong>$1</strong>", options: .regularExpression)
-        html = html.replacingOccurrences(of: "\\*(.+?)\\*", with: "<em>$1</em>", options: .regularExpression)
-        
-        let codePattern = try? NSRegularExpression(pattern: "```(.+?)```", options: .dotMatchesLineSeparators)
-        if let pattern = codePattern {
-            let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
-            for match in matches.reversed() {
-                let code = (html as NSString).substring(with: match.range(at: 1))
-                let replacement = "<pre><code>\(code)</code></pre>"
-                html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
-            }
-        }
-        
-        let quotePattern = try? NSRegularExpression(pattern: "^(>|&gt;)\\s+(.+)$", options: .anchorsMatchLines)
-        if let pattern = quotePattern {
-            let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
-            for match in matches.reversed() {
-                let text = (html as NSString).substring(with: match.range(at: 2))
-                let replacement = "<blockquote>\(text)</blockquote>"
-                html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
-            }
-        }
-        
-        let listPattern = try? NSRegularExpression(pattern: "^-\\s+(.+)$", options: .anchorsMatchLines)
-        if let pattern = listPattern {
-            let matches = pattern.matches(in: html, options: [], range: NSRange(location: 0, length: html.utf16.count))
-            for match in matches.reversed() {
-                let text = (html as NSString).substring(with: match.range(at: 1))
-                let replacement = "<li>\(text)</li>"
-                html = (html as NSString).replacingCharacters(in: match.range, with: replacement)
-            }
-        }
-        
-        let paragraphs = html.split(separator: "\n\n", omittingEmptySubsequences: false)
-        html = paragraphs.map { para in
-            let trimmed = para.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty { return "<p></p>" }
-            if trimmed.hasPrefix("<h") || trimmed.hasPrefix("<blockquote>") || trimmed.hasPrefix("<pre>") || trimmed.hasPrefix("<li>") {
-                return String(trimmed)
-            }
-            return "<p>\(trimmed)</p>"
-        }.joined(separator: "\n")
-        
-        return html
-    }
-    
-    /// 对文本中的 HTML 特殊字符进行转义。
-    private func escapeHTML(_ text: String) -> String {
-        var result = text
-        result = result.replacingOccurrences(of: "&", with: "&amp;")
-        result = result.replacingOccurrences(of: "<", with: "&lt;")
-        result = result.replacingOccurrences(of: ">", with: "&gt;")
-        result = result.replacingOccurrences(of: "\"", with: "&quot;")
-        result = result.replacingOccurrences(of: "'", with: "&#39;")
-        return result
+        var blockParser = MarkdownBlockParser(text: markdown)
+        let ast = blockParser.parse()
+        return HTMLRenderer.render(ast)
     }
     
     /// 对文本中的 XML 特殊字符进行转义（包含引号）。

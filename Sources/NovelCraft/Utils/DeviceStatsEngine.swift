@@ -120,7 +120,7 @@ final class DeviceStatsEngine: ObservableObject {
         guard result == KERN_SUCCESS else { return }
         
         let pageSize = UInt64(vm_kernel_page_size)
-        let free      = UInt64(stats.free_count) * pageSize
+        let _         = UInt64(stats.free_count) * pageSize
         let active    = UInt64(stats.active_count) * pageSize
         let inactive  = UInt64(stats.inactive_count) * pageSize
         let wired     = UInt64(stats.wire_count) * pageSize

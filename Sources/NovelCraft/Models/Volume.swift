@@ -9,6 +9,7 @@ final class Volume {
     /// 卷标题
     var title: String
     /// 在所属项目中的排序序号
+    // 索引由 SwiftData 自动管理
     var order: Int
     /// 创建时间
     var createdAt: Date
@@ -21,7 +22,7 @@ final class Volume {
     
     /// 关联的章节列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \Chapter.volume)
-    var chapters: [Chapter]?
+    var chapters: [Chapter] = []
     
     init(title: String = "新卷", order: Int = 0) {
         self.id = UUID()
@@ -33,6 +34,6 @@ final class Volume {
     
     /// 计算当前卷下所有章节的总字数（字符数）
     var wordCount: Int {
-        (chapters ?? []).reduce(0) { $0 + $1.wordCount }
+        chapters.reduce(0) { $0 + $1.wordCount }
     }
 }

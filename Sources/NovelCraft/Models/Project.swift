@@ -13,6 +13,7 @@ final class Project {
     /// 小说简介
     var summary: String
     /// 项目存储路径（包含项目名称的完整目录路径）
+    // 索引由 SwiftData 自动管理
     var storagePath: String
     /// 创建时间
     var createdAt: Date
@@ -25,27 +26,31 @@ final class Project {
     
     /// 关联的卷列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \Volume.project)
-    var volumes: [Volume]?
+    var volumes: [Volume] = []
     
     /// 关联的角色列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \Character.project)
-    var characters: [Character]?
+    var characters: [Character] = []
     
     /// 关联的世界观设定列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \WorldSetting.project)
-    var worldSettings: [WorldSetting]?
+    var worldSettings: [WorldSetting] = []
     
     /// 关联的大纲节点列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \OutlineNode.project)
-    var outlineNodes: [OutlineNode]?
+    var outlineNodes: [OutlineNode] = []
     
     /// 关联的便签列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \Note.project)
-    var notes: [Note]?
+    var notes: [Note] = []
     
     /// 关联的电子表格工作表列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \SpreadsheetSheet.project)
-    var spreadsheetSheets: [SpreadsheetSheet]?
+    var spreadsheetSheets: [SpreadsheetSheet] = []
+    
+    /// 关联的待办事项列表（级联删除）
+    @Relationship(deleteRule: .cascade, inverse: \TodoItem.project)
+    var todoItems: [TodoItem] = []
     
     init(
         title: String,
@@ -68,7 +73,7 @@ final class Project {
     
     /// 计算当前项目下所有卷的总字数
     var totalWordCount: Int {
-        (volumes ?? []).reduce(0) { $0 + $1.wordCount }
+        volumes.reduce(0) { $0 + $1.wordCount }
     }
     
     /// 计算当前字数占目标字数的百分比（上限为 1.0）

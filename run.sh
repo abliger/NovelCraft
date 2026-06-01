@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 # 若 NovelCraft 正在运行，先退出旧实例以确保重新加载最新代码
 if pgrep -x "NovelCraft" > /dev/null 2>&1; then
     echo "🛑 正在退出已运行的 NovelCraft..."
-    killall NovelCraft
+    pkill -x NovelCraft
     sleep 1
 fi
 
@@ -71,7 +71,7 @@ cat > "$PLIST_PATH" << 'EOF'
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string></string>
+    <string>NovelCraft</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -93,6 +93,8 @@ EOF
 # 重新对 App Bundle 进行 ad-hoc 签名，否则每次复制新二进制后门签名会失效，
 # 导致 macOS Gatekeeper / 隐私权限无法记住授权，每次运行都弹窗。
 echo "🔏 签名 App Bundle..."
+# --deep 在较新 macOS 中已被标记为弃用，但当前 ad-hoc 签名仍需要递归签名子组件
+# 未来若 Apple 强制移除 --deep，可改用 xattr -cr 清除扩展属性后逐个签名
 codesign --force --deep --sign - "$APP_PATH"
 
 echo "🚀 启动 NovelCraft..."
