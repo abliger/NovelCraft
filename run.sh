@@ -90,5 +90,10 @@ cat > "$PLIST_PATH" << 'EOF'
 </plist>
 EOF
 
+# 重新对 App Bundle 进行 ad-hoc 签名，否则每次复制新二进制后门签名会失效，
+# 导致 macOS Gatekeeper / 隐私权限无法记住授权，每次运行都弹窗。
+echo "🔏 签名 App Bundle..."
+codesign --force --deep --sign - "$APP_PATH"
+
 echo "🚀 启动 NovelCraft..."
 open "$APP_PATH"
