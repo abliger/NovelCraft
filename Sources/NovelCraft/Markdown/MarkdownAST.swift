@@ -68,7 +68,7 @@ extension MDNode {
             return ""
         case .blockRef(_, let anchor):
             return anchor ?? ""
-        case .blockEmbed(let id):
+        case .blockEmbed(_):
             return ""
         }
     }

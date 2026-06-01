@@ -39,7 +39,7 @@ struct BlockEditorView: View {
                     VStack(spacing: 4) {
                         ForEach($blocks) { $block in
                             let isFocused = focusedBlockID == block.id
-                            let isBlockZoomed = zoomedBlockID == block.id
+                            let _ = zoomedBlockID == block.id
                             
                             BlockRowView(
                                 block: $block,

@@ -5,7 +5,7 @@ import SwiftUI
 struct MarkdownRenderer {
 
     static func render(_ node: MDNode) -> AttributedString {
-        var renderer = Self()
+        let renderer = Self()
         return renderer.render(node)
     }
 
@@ -59,7 +59,7 @@ struct MarkdownRenderer {
             result.backgroundColor = Color.gray.opacity(0.12)
             return result
 
-        case .link(let url, let children):
+        case .link(_, let children):
             var result = children.map(render).joined()
             result.foregroundColor = .accentColor
             #if os(macOS)
@@ -69,7 +69,7 @@ struct MarkdownRenderer {
             #endif
             return result
 
-        case .blockRef(let id, let anchor):
+        case .blockRef(_, let anchor):
             let display = anchor?.isEmpty == false ? anchor! : "引用"
             var result = AttributedString(display)
             result.foregroundColor = .purple
@@ -80,7 +80,7 @@ struct MarkdownRenderer {
             #endif
             return result
 
-        case .blockEmbed(let id):
+        case .blockEmbed(_):
             var result = AttributedString("[嵌入块]")
             result.foregroundColor = .blue
             result.backgroundColor = .blue.opacity(0.1)
