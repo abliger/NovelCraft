@@ -117,6 +117,7 @@ struct ContentView: View {
             ContentBlockRef.self,
             SpreadsheetSheet.self,
             SpreadsheetCell.self,
+            TodoItem.self,
         ])
 
         let dbURL = URL(fileURLWithPath: meta.storagePath)

@@ -82,6 +82,9 @@ final class PluginManager: ObservableObject {
         register(NameGeneratorPlugin(), isBuiltIn: true)
         register(SensitiveWordCheckPlugin(), isBuiltIn: true)
         register(RepeatedWordCheckPlugin(), isBuiltIn: true)
+        #if os(macOS)
+        register(DeviceMonitorPlugin(), isBuiltIn: true)
+        #endif
     }
     
     /// 重置所有内置插件（恢复被注销的官方插件）。
