@@ -204,6 +204,10 @@ enum BlockRefEngine {
         if let character = try? context.fetch(FetchDescriptor<Character>(predicate: #Predicate { $0.id == blockID })).first {
             return character.name
         }
+        // SpreadsheetCell
+        if let cell = try? context.fetch(FetchDescriptor<SpreadsheetCell>(predicate: #Predicate { $0.id == blockID })).first {
+            return cell.coordinate
+        }
         return nil
     }
     
@@ -233,6 +237,11 @@ enum BlockRefEngine {
         if let character = try? context.fetch(FetchDescriptor<Character>(predicate: #Predicate { $0.id == blockID })).first {
             return BlockMeta(id: blockID, title: character.name, type: .character)
         }
+        // SpreadsheetCell
+        if let cell = try? context.fetch(FetchDescriptor<SpreadsheetCell>(predicate: #Predicate { $0.id == blockID })).first {
+            let sheetTitle = cell.sheet?.title ?? "表格"
+            return BlockMeta(id: blockID, title: "\(sheetTitle) - \(cell.coordinate)", type: .spreadsheetCell)
+        }
         return nil
     }
 }
@@ -248,6 +257,7 @@ enum EntityBlockType: String, CaseIterable {
     case outline = "大纲"
     case worldSetting = "世界观"
     case character = "角色"
+    case spreadsheetCell = "单元格"
     
     var icon: String {
         switch self {
@@ -258,6 +268,7 @@ enum EntityBlockType: String, CaseIterable {
         case .outline: return "diagram.project"
         case .worldSetting: return "globe"
         case .character: return "person"
+        case .spreadsheetCell: return "tablecells"
         }
     }
 }

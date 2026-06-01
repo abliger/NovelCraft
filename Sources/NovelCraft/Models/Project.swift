@@ -43,6 +43,10 @@ final class Project {
     @Relationship(deleteRule: .cascade, inverse: \Note.project)
     var notes: [Note]?
     
+    /// 关联的电子表格工作表列表（级联删除）
+    @Relationship(deleteRule: .cascade, inverse: \SpreadsheetSheet.project)
+    var spreadsheetSheets: [SpreadsheetSheet]?
+    
     init(
         title: String,
         author: String = "",

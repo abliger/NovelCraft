@@ -29,8 +29,12 @@ struct ContentView: View {
 
     /// 右侧辅助边栏是否显示
     @State private var isRightSidebarVisible: Bool = false
+    /// 是否显示电子表格
+    @State private var isSpreadsheetActive: Bool = false
     /// 右侧辅助边栏当前选中的标签
     @State private var rightSidebarTab: RightPanelTab = .characters
+    /// 当前选中的插件面板 ID
+    @State private var selectedPluginPanelID: String? = nil
     /// 当前选中的章节
     @State private var selectedChapter: Chapter? = nil
     /// 是否进入专注模式
@@ -41,6 +45,7 @@ struct ContentView: View {
     #endif
     /// 是否显示导出面板
     @State private var isShowingExport = false
+    @State private var isShowingPluginManager = false
 
     var body: some View {
         Group {
@@ -71,12 +76,21 @@ struct ContentView: View {
                 ExportView(project: project, chapter: selectedChapter)
             }
         }
+        .sheet(isPresented: $isShowingPluginManager) {
+            PluginSettingsView()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showPluginManager)) { _ in
+            isShowingPluginManager = true
+        }
         .onChange(of: selectedProjectID) { _, newValue in
             if let id = newValue {
                 openProject(id: id)
             } else {
                 closeProject()
             }
+        }
+        .onChange(of: selectedChapter) { _, newValue in
+            PluginManager.shared.context.updateSelectedChapter(newValue)
         }
 
     }
@@ -87,6 +101,9 @@ struct ContentView: View {
             selectedProjectID = nil
             return
         }
+        
+        // 释放旧容器
+        closeProject()
 
         let schema = Schema([
             Project.self,
@@ -98,6 +115,8 @@ struct ContentView: View {
             OutlineNode.self,
             Note.self,
             ContentBlockRef.self,
+            SpreadsheetSheet.self,
+            SpreadsheetCell.self,
         ])
 
         let dbURL = URL(fileURLWithPath: meta.storagePath)
@@ -116,6 +135,7 @@ struct ContentView: View {
                 syncMetaToProject(meta: meta, project: project, context: context)
                 self.projectContainer = container
                 self.currentProject = project
+                PluginManager.shared.context.updateProject(project, container: container)
             } else {
                 // 数据库中不存在 Project 记录（异常情况），新建一个
                 // 使用注册表中的 UUID，避免数据库与注册表 ID 不一致
@@ -132,6 +152,7 @@ struct ContentView: View {
                 try context.save()
                 self.projectContainer = container
                 self.currentProject = newProject
+                PluginManager.shared.context.updateProject(newProject, container: container)
             }
         } catch {
             print("打开项目失败: \(error)")
@@ -142,6 +163,8 @@ struct ContentView: View {
     /// 关闭当前项目，清理数据库容器，并将最新统计信息同步到注册表。
     private func closeProject() {
         syncProjectStats()
+        PluginManager.shared.context.updateProject(nil, container: nil)
+        PluginManager.shared.context.updateSelectedChapter(nil)
         projectContainer = nil
         currentProject = nil
         selectedChapter = nil
@@ -179,7 +202,9 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 280)
         } detail: {
             Group {
-                if let chapter = selectedChapter {
+                if isSpreadsheetActive {
+                    SpreadsheetView(project: project)
+                } else if let chapter = selectedChapter {
                     EditorView(
                         project: project,
                         chapter: chapter
@@ -195,7 +220,7 @@ struct ContentView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) {
+            ToolbarItemGroup(placement: .navigation) {
                 Button {
                     withAnimation {
                         selectedProjectID = nil
@@ -205,6 +230,15 @@ struct ContentView: View {
                     Image(systemName: "books.vertical")
                 }
                 .help("返回项目列表")
+
+                Button {
+                    withAnimation {
+                        isSpreadsheetActive.toggle()
+                    }
+                } label: {
+                    Image(systemName: isSpreadsheetActive ? "doc.text" : "tablecells")
+                }
+                .help(isSpreadsheetActive ? "返回编辑器" : "电子表格")
             }
 
             ToolbarItem {
@@ -214,7 +248,7 @@ struct ContentView: View {
                     Image(systemName: "lightbulb")
                 }
                 .help("专注模式 (⇧⌘F)")
-                .disabled(selectedChapter == nil)
+                .disabled(selectedChapter == nil || isSpreadsheetActive)
             }
 
             ToolbarItem {
@@ -257,27 +291,79 @@ struct ContentView: View {
     private func rightSidebar(project: Project) -> some View {
         VStack(spacing: 0) {
             // 顶部分段选择器
-            Picker("", selection: $rightSidebarTab) {
-                ForEach(RightPanelTab.allCases, id: \.self) { tab in
-                    Image(systemName: tab.icon)
-                        .tag(tab)
+            let pluginPanels = PluginManager.shared.allSidebarPanels
+            if pluginPanels.isEmpty {
+                Picker("", selection: $rightSidebarTab) {
+                    ForEach(RightPanelTab.allCases, id: \.self) { tab in
+                        Image(systemName: tab.icon)
+                            .tag(tab)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .padding()
+            } else {
+                // 当存在插件面板时，使用 Menu 或扩展的 picker
+                pluginTabPicker(pluginPanels: pluginPanels)
+                    .padding()
             }
-            .pickerStyle(.segmented)
-            .padding()
 
             Divider()
 
             // 面板内容
-            switch rightSidebarTab {
-            case .characters:
-                CharacterListView(project: project)
-            case .world:
-                WorldSettingListView(project: project)
-            case .outline:
-                OutlineView(project: project)
-            case .notes:
-                NoteListView(project: project)
+            if let panelID = selectedPluginPanelID,
+               let panel = pluginPanels.first(where: { $0.id == panelID }) {
+                panel.content()
+            } else {
+                switch rightSidebarTab {
+                case .characters:
+                    CharacterListView(project: project)
+                case .world:
+                    WorldSettingListView(project: project)
+                case .outline:
+                    OutlineView(project: project)
+                case .notes:
+                    NoteListView(project: project)
+                }
+            }
+        }
+    }
+    
+    /// 扩展的标签选择器，同时支持原生面板和插件面板。
+    @ViewBuilder
+    private func pluginTabPicker(pluginPanels: [PluginSidebarPanel]) -> some View {
+        HStack(spacing: 4) {
+            ForEach(RightPanelTab.allCases, id: \.self) { tab in
+                Button {
+                    selectedPluginPanelID = nil
+                    rightSidebarTab = tab
+                } label: {
+                    Image(systemName: tab.icon)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(selectedPluginPanelID == nil && rightSidebarTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
+                        .foregroundStyle(selectedPluginPanelID == nil && rightSidebarTab == tab ? .primary : .secondary)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            if !pluginPanels.isEmpty {
+                Divider().frame(height: 20)
+                
+                ForEach(pluginPanels) { panel in
+                    Button {
+                        selectedPluginPanelID = panel.id
+                    } label: {
+                        Image(systemName: panel.icon)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(selectedPluginPanelID == panel.id ? Color.accentColor.opacity(0.15) : Color.clear)
+                            .foregroundStyle(selectedPluginPanelID == panel.id ? .primary : .secondary)
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help(panel.title)
+                }
             }
         }
     }
