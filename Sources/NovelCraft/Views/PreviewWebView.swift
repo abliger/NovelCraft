@@ -6,7 +6,7 @@ import WebKit
 /// 加载包含 MathJax、Mermaid、abcjs 的 HTML 页面，支持数学公式、
 /// 流程图、时序图、甘特图、五线谱、SVG 图片和原始 HTML 的渲染。
 ///
-/// 使用 loadFileURL 加载本地 HTML 文件，确保相对路径图片和本地 JS 库都能正确加载。
+/// 使用 loadHTMLString 加载，baseURL 指向项目目录，确保相对路径图片能正确加载。
 #if os(macOS)
 struct PreviewWebView: NSViewRepresentable {
     let htmlString: String
@@ -15,23 +15,14 @@ struct PreviewWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
-        config.preferences.setValue(true, forKey: "allowUniversalAccessFromFileURLs")
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.setValue(false, forKey: "drawsBackground")
         return webView
     }
     
     func updateNSView(_ webView: WKWebView, context: Context) {
-        let projectURL = baseURL ?? FileManager.default.temporaryDirectory
-        let tempFile = projectURL.appendingPathComponent(".novelcraft_preview_\(context.coordinator.id).html")
-        
         let resolvedHTML = resolveScriptURLs(in: htmlString)
-        
-        do {
-            try resolvedHTML.write(to: tempFile, atomically: true, encoding: .utf8)
-            webView.loadFileURL(tempFile, allowingReadAccessTo: projectURL)
-        } catch {
-            webView.loadHTMLString(resolvedHTML, baseURL: baseURL)
-        }
+        webView.loadHTMLString(resolvedHTML, baseURL: baseURL)
     }
     
     func makeCoordinator() -> Coordinator {
@@ -42,7 +33,7 @@ struct PreviewWebView: NSViewRepresentable {
         let id = UUID().uuidString
     }
     
-    /// 将 HTML 模板中的 {{MATHJAX_URL}} 等占位符替换为 Bundle 中 JS 文件的实际 file:// URL
+    /// 将 HTML 模板中的 {{MATHJAX_URL}} 等占位符替换为 CDN 链接或 Bundle 中的本地文件
     private func resolveScriptURLs(in html: String) -> String {
         var result = html
         
@@ -53,9 +44,12 @@ struct PreviewWebView: NSViewRepresentable {
         ]
         
         for item in replacements {
-            let url = Bundle.main.url(forResource: item.resource, withExtension: item.ext, subdirectory: item.subdir)
-            let path = url?.absoluteString ?? ""
-            result = result.replacingOccurrences(of: item.placeholder, with: path)
+            if let url = Bundle.main.url(forResource: item.resource, withExtension: item.ext, subdirectory: item.subdir) {
+                result = result.replacingOccurrences(of: item.placeholder, with: url.absoluteString)
+            } else {
+                // Bundle 中不存在时清空 script 标签，避免加载当前页面作为 JS
+                result = result.replacingOccurrences(of: "<script src=\"\(item.placeholder)\"></script>", with: "")
+            }
         }
         
         return result
@@ -69,23 +63,15 @@ struct PreviewWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
-        config.preferences.setValue(true, forKey: "allowUniversalAccessFromFileURLs")
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.isOpaque = false
+        webView.backgroundColor = UIColor.clear
         return webView
     }
     
     func updateUIView(_ webView: WKWebView, context: Context) {
-        let projectURL = baseURL ?? FileManager.default.temporaryDirectory
-        let tempFile = projectURL.appendingPathComponent(".novelcraft_preview_\(context.coordinator.id).html")
-        
         let resolvedHTML = resolveScriptURLs(in: htmlString)
-        
-        do {
-            try resolvedHTML.write(to: tempFile, atomically: true, encoding: .utf8)
-            webView.loadFileURL(tempFile, allowingReadAccessTo: projectURL)
-        } catch {
-            webView.loadHTMLString(resolvedHTML, baseURL: baseURL)
-        }
+        webView.loadHTMLString(resolvedHTML, baseURL: baseURL)
     }
     
     func makeCoordinator() -> Coordinator {
@@ -106,9 +92,11 @@ struct PreviewWebView: UIViewRepresentable {
         ]
         
         for item in replacements {
-            let url = Bundle.main.url(forResource: item.resource, withExtension: item.ext, subdirectory: item.subdir)
-            let path = url?.absoluteString ?? ""
-            result = result.replacingOccurrences(of: item.placeholder, with: path)
+            if let url = Bundle.main.url(forResource: item.resource, withExtension: item.ext, subdirectory: item.subdir) {
+                result = result.replacingOccurrences(of: item.placeholder, with: url.absoluteString)
+            } else {
+                result = result.replacingOccurrences(of: "<script src=\"\(item.placeholder)\"></script>", with: "")
+            }
         }
         
         return result
