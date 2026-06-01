@@ -1,15 +1,15 @@
 import Foundation
 import SwiftUI
 
-/// 待办清单插件。
+/// 设备监控插件。
 ///
-/// 启用后在 macOS 菜单栏中添加一个待办清单图标，点击后弹出任务管理窗口。
-/// 任务数据通过 @AppStorage 持久化，跨项目全局可用。
+/// 启用后在 macOS 菜单栏中添加设备监控图标，点击后展示 CPU、内存、GPU 与网络的实时使用情况。
+/// 仅支持 macOS。
 @MainActor
-final class TodoListPlugin: NovelCraftPlugin {
-    let id = "com.novelcraft.plugins.todolist"
-    let name = "待办清单"
-    let description = "在菜单栏中管理写作待办事项，支持添加、完成与删除任务。"
+final class DeviceMonitorPlugin: NovelCraftPlugin {
+    let id = "com.novelcraft.plugins.devicemonitor"
+    let name = "设备监控"
+    let description = "在菜单栏中实时监控 CPU、内存、GPU 与网络的使用情况。"
     let version = "1.0.0"
     let author = "NovelCraft 官方"
     var isEnabled: Bool = true {
@@ -24,6 +24,7 @@ final class TodoListPlugin: NovelCraftPlugin {
     
     func setup(context: PluginContext) {
         self.context = context
+        // 插件注册时发送初始状态
         postVisibilityChange(isVisible: isEnabled)
     }
     
@@ -32,15 +33,18 @@ final class TodoListPlugin: NovelCraftPlugin {
         context = nil
     }
     
+    /// 发送菜单栏可见性变化通知。
     private func postVisibilityChange(isVisible: Bool) {
         NotificationCenter.default.post(
-            name: .todoListVisibilityChanged,
+            name: .deviceMonitorVisibilityChanged,
             object: nil,
             userInfo: ["isVisible": isVisible]
         )
     }
 }
 
+// MARK: - 通知名称
+
 extension Notification.Name {
-    static let todoListVisibilityChanged = Notification.Name("NovelCraft.TodoListVisibilityChanged")
+    static let deviceMonitorVisibilityChanged = Notification.Name("NovelCraft.DeviceMonitorVisibilityChanged")
 }

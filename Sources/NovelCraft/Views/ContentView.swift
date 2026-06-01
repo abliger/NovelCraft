@@ -274,9 +274,9 @@ struct ContentView: View {
 
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    withAnimation {
-                        isRightSidebarVisible.toggle()
-                    }
+                    // macOS 上 .inspector 由 AppKit 驱动，自带系统动画；
+                    // 手动包裹 withAnimation 会在窗口 resize 或拖动分隔条时与内部布局事务冲突，导致崩溃。
+                    isRightSidebarVisible.toggle()
                 } label: {
                     Image(
                         systemName: isRightSidebarVisible

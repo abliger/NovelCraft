@@ -13,14 +13,21 @@ final class DeviceMonitorState: ObservableObject {
     @Published var isVisible = false
 }
 
+/// 待办清单菜单栏状态，用于控制 MenuBarExtra 的显示与隐藏。
+final class TodoListState: ObservableObject {
+    @Published var isVisible = false
+}
+
 @main
 struct NovelCraftApp: App {
     private let deviceMonitorState = DeviceMonitorState()
+    private let todoListState = TodoListState()
     
     init() {
         setupAutoTimestamps()
         // 必须先注册 MenuBarExtra 通知监听，再注册插件，否则插件 setup 发出的通知会丢失
         setupDeviceMonitorObserver()
+        setupTodoListObserver()
         PluginManager.shared.registerBuiltInPlugins()
     }
     
@@ -47,6 +54,14 @@ struct NovelCraftApp: App {
             DeviceMonitorView()
         }
         .menuBarExtraStyle(.window)
+        
+        MenuBarExtra("待办清单", systemImage: "star", isInserted: Binding(
+            get: { todoListState.isVisible },
+            set: { todoListState.isVisible = $0 }
+        )) {
+            TodoListView()
+        }
+        .menuBarExtraStyle(.window)
         #endif
     }
     
@@ -59,6 +74,18 @@ struct NovelCraftApp: App {
         ) { [weak deviceMonitorState] notification in
             guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
             deviceMonitorState?.isVisible = isVisible
+        }
+    }
+    
+    /// 监听待办清单插件的可见性变化通知。
+    private func setupTodoListObserver() {
+        NotificationCenter.default.addObserver(
+            forName: .todoListVisibilityChanged,
+            object: nil,
+            queue: .main
+        ) { [weak todoListState] notification in
+            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
+            todoListState?.isVisible = isVisible
         }
     }
     
