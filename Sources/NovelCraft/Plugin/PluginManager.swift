@@ -82,6 +82,7 @@ final class PluginManager: ObservableObject {
         register(NameGeneratorPlugin(), isBuiltIn: true)
         register(SensitiveWordCheckPlugin(), isBuiltIn: true)
         register(RepeatedWordCheckPlugin(), isBuiltIn: true)
+        register(TodoListPlugin(), isBuiltIn: true)
         #if os(macOS)
         register(DeviceMonitorPlugin(), isBuiltIn: true)
         #endif
