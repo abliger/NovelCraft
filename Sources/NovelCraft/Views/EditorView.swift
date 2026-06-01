@@ -166,7 +166,15 @@ struct EditorView: View {
             guard !Task.isCancelled else { return }
             // 防竞态：若章节已切换则跳过本次保存
             guard chapter.id == capturedChapterID else { return }
-            syncRefsAndSave(chapterID: capturedChapterID, text: capturedText)
+            let processedText = PluginManager.shared.processContent(capturedText, chapter: chapter)
+            // 如果内容处理器修改了文本，同步回编辑器
+            if processedText != capturedText {
+                await MainActor.run {
+                    editorText = processedText
+                    chapter.content = processedText
+                }
+            }
+            syncRefsAndSave(chapterID: capturedChapterID, text: processedText)
         }
     }
     
@@ -237,10 +245,29 @@ struct EditorView: View {
         }
     }
     
+    /// 插件贡献的工具栏按钮区域。
+    @ViewBuilder
+    private var pluginToolbarItems: some View {
+        let items = PluginManager.shared.allToolbarItems
+        if !items.isEmpty {
+            ForEach(items, id: \.id) { item in
+                Button {
+                    item.action()
+                } label: {
+                    Image(systemName: item.icon)
+                }
+                .help(item.tooltip)
+            }
+            Divider()
+                .frame(height: 20)
+        }
+    }
+    
     /// 编辑器顶部工具栏，提供 Markdown 格式插入与字体调整按钮。
     private var editorToolbar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 8) {
+                pluginToolbarItems
                 Button {
                     applyMarkdown(prefix: "# ")
                 } label: {
@@ -314,6 +341,8 @@ struct EditorView: View {
                     Image(systemName: showBacklinkPanel ? "link.circle.fill" : "link.circle")
                 }
                 .help("反向链接面板")
+                
+                pluginToolbarItems
                 
                 if !forwardRefs.isEmpty {
                     Text("\(forwardRefs.count)")

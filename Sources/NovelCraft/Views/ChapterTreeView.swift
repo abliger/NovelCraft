@@ -298,6 +298,19 @@ struct ChapterRow: View {
                 renameText = chapter.title
                 isRenaming = true
             }
+            
+            let pluginActions = PluginManager.shared.allChapterActions
+            if !pluginActions.isEmpty {
+                Divider()
+                ForEach(pluginActions, id: \.id) { action in
+                    Button {
+                        action.action(chapter)
+                    } label: {
+                        Label(action.title, systemImage: action.icon)
+                    }
+                }
+            }
+            
             Divider()
             Button("删除", role: .destructive) {
                 if selectedChapter?.id == chapter.id {
