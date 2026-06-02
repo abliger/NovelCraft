@@ -2,6 +2,7 @@ import SwiftUI
 
 #if os(macOS)
 import AppKit
+import os.log
 
 /// 菜单栏控制器，使用 AppKit NSStatusBar 手动管理设备监控与待办清单的菜单栏图标。
 ///
@@ -43,11 +44,13 @@ final class MenuBarController: NSObject {
     
     @objc private func handleDeviceMonitorVisibility(_ notification: Notification) {
         guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
+        NSLog("[MenuBar] 设备监控通知: %d", isVisible)
         isVisible ? showDeviceMonitor() : hideDeviceMonitor()
     }
     
     @objc private func handleTodoListVisibility(_ notification: Notification) {
         guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
+        NSLog("[MenuBar] 待办清单通知: %d", isVisible)
         isVisible ? showTodoList() : hideTodoList()
     }
     
@@ -66,19 +69,27 @@ final class MenuBarController: NSObject {
     // MARK: - 设备监控
     
     private func showDeviceMonitor() {
-        guard deviceMonitorItem == nil else { return }
+        guard deviceMonitorItem == nil else {
+            NSLog("[MenuBar] 设备监控已存在，跳过创建")
+            return
+        }
         let item = statusBar.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = nil
+        item.isVisible = true
         item.button?.image = NSImage(systemSymbolName: "cpu", accessibilityDescription: "设备监控")
         item.button?.target = self
         item.button?.action = #selector(toggleDeviceMonitorPopover)
         deviceMonitorItem = item
+        NSLog("[MenuBar] 设备监控图标已创建")
     }
     
     private func hideDeviceMonitor() {
         guard let item = deviceMonitorItem else { return }
         closePopover(deviceMonitorPopover)
+        item.isVisible = false
         statusBar.removeStatusItem(item)
         deviceMonitorItem = nil
+        NSLog("[MenuBar] 设备监控图标已移除")
     }
     
     @objc private func toggleDeviceMonitorPopover(_ sender: NSStatusBarButton?) {
@@ -93,19 +104,27 @@ final class MenuBarController: NSObject {
     // MARK: - 待办清单
     
     private func showTodoList() {
-        guard todoListItem == nil else { return }
+        guard todoListItem == nil else {
+            NSLog("[MenuBar] 待办清单已存在，跳过创建")
+            return
+        }
         let item = statusBar.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = nil
+        item.isVisible = true
         item.button?.image = NSImage(systemSymbolName: "star", accessibilityDescription: "待办清单")
         item.button?.target = self
         item.button?.action = #selector(toggleTodoListPopover)
         todoListItem = item
+        NSLog("[MenuBar] 待办清单图标已创建")
     }
     
     private func hideTodoList() {
         guard let item = todoListItem else { return }
         closePopover(todoListPopover)
+        item.isVisible = false
         statusBar.removeStatusItem(item)
         todoListItem = nil
+        NSLog("[MenuBar] 待办清单图标已移除")
     }
     
     @objc private func toggleTodoListPopover(_ sender: NSStatusBarButton?) {
