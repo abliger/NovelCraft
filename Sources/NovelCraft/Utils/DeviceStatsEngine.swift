@@ -49,8 +49,10 @@ final class DeviceStatsEngine: ObservableObject {
     /// 开始定时采样。
     func startMonitoring(interval: TimeInterval = 5.0) {
         stopMonitoring()
-        // 立即执行一次采样作为基准
-        sample()
+        // 延迟首次采样，避免在 SwiftUI view update 中发布状态变化
+        DispatchQueue.main.async { [weak self] in
+            self?.sample()
+        }
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.sample()

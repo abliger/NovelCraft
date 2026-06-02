@@ -8,67 +8,17 @@ extension Notification.Name {
     static let triggerPluginAction = Notification.Name("NovelCraft.TriggerPluginAction")
 }
 
-/// 菜单栏状态管理器，统一控制 MenuBarExtra 的显示与隐藏。
-///
-/// 使用 `@StateObject` 挂载在 `App` 层级，使 SwiftUI 能正确观察状态变化并重新计算 Scene。
-@MainActor
-final class MenuBarState: ObservableObject {
-    @Published var deviceMonitorVisible = false
-    @Published var todoListVisible = false
-    
-    private var tokens: [any NSObjectProtocol] = []
-    
-    init() {
-        setupObservers()
-        syncInitialState()
-    }
-    
-    private func setupObservers() {
-        tokens.append(NotificationCenter.default.addObserver(
-            forName: .deviceMonitorVisibilityChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
-            Task { @MainActor [weak self] in
-                self?.deviceMonitorVisible = isVisible
-            }
-        })
-        
-        tokens.append(NotificationCenter.default.addObserver(
-            forName: .todoListVisibilityChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
-            Task { @MainActor [weak self] in
-                self?.todoListVisible = isVisible
-            }
-        })
-    }
-    
-    /// 与 PluginManager 中已注册插件的当前启用状态同步。
-    private func syncInitialState() {
-        let plugins = PluginManager.shared.plugins
-        if let plugin = plugins.first(where: { $0.id == "com.novelcraft.plugins.devicemonitor" }) {
-            deviceMonitorVisible = plugin.isEnabled
-        }
-        if let plugin = plugins.first(where: { $0.id == "com.novelcraft.plugins.todolist" }) {
-            todoListVisible = plugin.isEnabled
-        }
-    }
-}
-
 @main
 struct NovelCraftApp: App {
-    @StateObject private var menuBarState = MenuBarState()
-    
     /// 保存通知观察者的 token，用于生命周期管理
     private var notificationTokens: [any NSObjectProtocol] = []
     
     init() {
         setupAutoTimestamps()
         PluginManager.shared.registerBuiltInPlugins()
+        #if os(macOS)
+        _ = MenuBarController.shared
+        #endif
     }
     
     var body: some Scene {
@@ -86,16 +36,6 @@ struct NovelCraftApp: App {
         Settings {
             SettingsView()
         }
-        
-        MenuBarExtra("设备监控", systemImage: "cpu", isInserted: $menuBarState.deviceMonitorVisible) {
-            DeviceMonitorView()
-        }
-        .menuBarExtraStyle(.window)
-        
-        MenuBarExtra("待办清单", systemImage: "star", isInserted: $menuBarState.todoListVisible) {
-            TodoListView()
-        }
-        .menuBarExtraStyle(.window)
         #endif
     }
     
