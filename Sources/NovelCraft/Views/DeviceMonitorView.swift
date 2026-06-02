@@ -4,7 +4,7 @@ import SwiftUI
 
 /// 设备监控面板视图，实时展示 CPU、内存、GPU 与网络的使用情况。
 struct DeviceMonitorView: View {
-    @StateObject private var engine = DeviceStatsEngine.shared
+    @StateObject private var engine = DeviceStatsEngine()
     
     var body: some View {
         VStack(spacing: 16) {

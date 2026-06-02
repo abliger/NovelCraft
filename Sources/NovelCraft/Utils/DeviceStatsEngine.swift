@@ -9,11 +9,9 @@ import MachO
 
 /// 设备统计引擎，负责采集 CPU、内存、GPU 与网络的使用数据。
 ///
-/// 通过定时采样（默认 2 秒间隔）计算差值，提供实时使用率与速率。
+/// 通过定时采样（默认 5 秒间隔）计算差值，提供实时使用率与速率。
 @MainActor
 final class DeviceStatsEngine: ObservableObject {
-    static let shared = DeviceStatsEngine()
-    
     /// 当前 CPU 使用率（0-100%）
     @Published var cpuUsage: Double = 0
     /// 当前内存使用量（字节）
@@ -40,12 +38,16 @@ final class DeviceStatsEngine: ObservableObject {
     private var previousNetworkStats: (sent: UInt64, recv: UInt64)?
     private var previousSampleTime: Date?
     
-    private init() {
+    init() {
         fetchStaticInfo()
     }
     
+    deinit {
+        timer?.invalidate()
+    }
+    
     /// 开始定时采样。
-    func startMonitoring(interval: TimeInterval = 2.0) {
+    func startMonitoring(interval: TimeInterval = 5.0) {
         stopMonitoring()
         // 立即执行一次采样作为基准
         sample()
@@ -122,11 +124,10 @@ final class DeviceStatsEngine: ObservableObject {
         let pageSize = UInt64(vm_kernel_page_size)
         let _         = UInt64(stats.free_count) * pageSize
         let active    = UInt64(stats.active_count) * pageSize
-        let inactive  = UInt64(stats.inactive_count) * pageSize
         let wired     = UInt64(stats.wire_count) * pageSize
         let compressed = UInt64(stats.compressor_page_count) * pageSize
         
-        memoryUsed = active + inactive + wired + compressed
+        memoryUsed = active + wired + compressed
         memoryPressure = memoryTotal > 0 ? Double(memoryUsed) / Double(memoryTotal) * 100.0 : 0
     }
     
