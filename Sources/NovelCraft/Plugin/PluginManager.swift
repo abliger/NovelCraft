@@ -85,6 +85,7 @@ final class PluginManager: ObservableObject {
         register(TodoListPlugin(), isBuiltIn: true)
         #if os(macOS)
         register(DeviceMonitorPlugin(), isBuiltIn: true)
+        register(CountdownPlugin(), isBuiltIn: true)
         #endif
     }
     
