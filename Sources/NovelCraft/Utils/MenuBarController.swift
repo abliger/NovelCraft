@@ -7,7 +7,7 @@ import AppKit
 ///
 /// 完全绕过 SwiftUI MenuBarExtra 的 isInserted 绑定，避免其在 macOS 上的稳定性问题。
 @MainActor
-final class MenuBarController {
+final class MenuBarController: NSObject {
     static let shared = MenuBarController()
     
     private let statusBar = NSStatusBar.system
@@ -18,9 +18,8 @@ final class MenuBarController {
     private var deviceMonitorPopover: NSPopover?
     private var todoListPopover: NSPopover?
     
-    private var tokens: [any NSObjectProtocol] = []
-    
-    private init() {
+    private override init() {
+        super.init()
         setupObservers()
         syncInitialState()
     }
@@ -28,23 +27,28 @@ final class MenuBarController {
     // MARK: - 通知监听
     
     private func setupObservers() {
-        tokens.append(NotificationCenter.default.addObserver(
-            forName: .deviceMonitorVisibilityChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
-            isVisible ? self?.showDeviceMonitor() : self?.hideDeviceMonitor()
-        })
-        
-        tokens.append(NotificationCenter.default.addObserver(
-            forName: .todoListVisibilityChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
-            isVisible ? self?.showTodoList() : self?.hideTodoList()
-        })
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDeviceMonitorVisibility(_:)),
+            name: .deviceMonitorVisibilityChanged,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleTodoListVisibility(_:)),
+            name: .todoListVisibilityChanged,
+            object: nil
+        )
+    }
+    
+    @objc private func handleDeviceMonitorVisibility(_ notification: Notification) {
+        guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
+        isVisible ? showDeviceMonitor() : hideDeviceMonitor()
+    }
+    
+    @objc private func handleTodoListVisibility(_ notification: Notification) {
+        guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
+        isVisible ? showTodoList() : hideTodoList()
     }
     
     // MARK: - 初始状态同步
