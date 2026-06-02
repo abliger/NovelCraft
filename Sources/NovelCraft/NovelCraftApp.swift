@@ -8,29 +8,66 @@ extension Notification.Name {
     static let triggerPluginAction = Notification.Name("NovelCraft.TriggerPluginAction")
 }
 
-/// 设备监控菜单栏状态，用于控制 MenuBarExtra 的显示与隐藏。
-final class DeviceMonitorState: ObservableObject {
-    @Published var isVisible = false
-}
-
-/// 待办清单菜单栏状态，用于控制 MenuBarExtra 的显示与隐藏。
-final class TodoListState: ObservableObject {
-    @Published var isVisible = false
+/// 菜单栏状态管理器，统一控制 MenuBarExtra 的显示与隐藏。
+///
+/// 使用 `@StateObject` 挂载在 `App` 层级，使 SwiftUI 能正确观察状态变化并重新计算 Scene。
+@MainActor
+final class MenuBarState: ObservableObject {
+    @Published var deviceMonitorVisible = false
+    @Published var todoListVisible = false
+    
+    private var tokens: [any NSObjectProtocol] = []
+    
+    init() {
+        setupObservers()
+        syncInitialState()
+    }
+    
+    private func setupObservers() {
+        tokens.append(NotificationCenter.default.addObserver(
+            forName: .deviceMonitorVisibilityChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
+            Task { @MainActor [weak self] in
+                self?.deviceMonitorVisible = isVisible
+            }
+        })
+        
+        tokens.append(NotificationCenter.default.addObserver(
+            forName: .todoListVisibilityChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
+            Task { @MainActor [weak self] in
+                self?.todoListVisible = isVisible
+            }
+        })
+    }
+    
+    /// 与 PluginManager 中已注册插件的当前启用状态同步。
+    private func syncInitialState() {
+        let plugins = PluginManager.shared.plugins
+        if let plugin = plugins.first(where: { $0.id == "com.novelcraft.plugins.devicemonitor" }) {
+            deviceMonitorVisible = plugin.isEnabled
+        }
+        if let plugin = plugins.first(where: { $0.id == "com.novelcraft.plugins.todolist" }) {
+            todoListVisible = plugin.isEnabled
+        }
+    }
 }
 
 @main
 struct NovelCraftApp: App {
-    private let deviceMonitorState = DeviceMonitorState()
-    private let todoListState = TodoListState()
+    @StateObject private var menuBarState = MenuBarState()
     
     /// 保存通知观察者的 token，用于生命周期管理
     private var notificationTokens: [any NSObjectProtocol] = []
     
     init() {
         setupAutoTimestamps()
-        // 必须先注册 MenuBarExtra 通知监听，再注册插件，否则插件 setup 发出的通知会丢失
-        setupDeviceMonitorObserver()
-        setupTodoListObserver()
         PluginManager.shared.registerBuiltInPlugins()
     }
     
@@ -50,48 +87,16 @@ struct NovelCraftApp: App {
             SettingsView()
         }
         
-        MenuBarExtra("设备监控", systemImage: "cpu", isInserted: Binding(
-            get: { deviceMonitorState.isVisible },
-            set: { deviceMonitorState.isVisible = $0 }
-        )) {
+        MenuBarExtra("设备监控", systemImage: "cpu", isInserted: $menuBarState.deviceMonitorVisible) {
             DeviceMonitorView()
         }
         .menuBarExtraStyle(.window)
         
-        MenuBarExtra("待办清单", systemImage: "star", isInserted: Binding(
-            get: { todoListState.isVisible },
-            set: { todoListState.isVisible = $0 }
-        )) {
+        MenuBarExtra("待办清单", systemImage: "star", isInserted: $menuBarState.todoListVisible) {
             TodoListView()
         }
         .menuBarExtraStyle(.window)
         #endif
-    }
-    
-    /// 监听设备监控插件的可见性变化通知。
-    private mutating func setupDeviceMonitorObserver() {
-        let token = NotificationCenter.default.addObserver(
-            forName: .deviceMonitorVisibilityChanged,
-            object: nil,
-            queue: .main
-        ) { [weak deviceMonitorState] notification in
-            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
-            deviceMonitorState?.isVisible = isVisible
-        }
-        notificationTokens.append(token)
-    }
-    
-    /// 监听待办清单插件的可见性变化通知。
-    private mutating func setupTodoListObserver() {
-        let token = NotificationCenter.default.addObserver(
-            forName: .todoListVisibilityChanged,
-            object: nil,
-            queue: .main
-        ) { [weak todoListState] notification in
-            guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
-            todoListState?.isVisible = isVisible
-        }
-        notificationTokens.append(token)
     }
     
     /// 注册 Core Data 保存前通知，自动更新所有带 `updatedAt` 字段的模型对象。
