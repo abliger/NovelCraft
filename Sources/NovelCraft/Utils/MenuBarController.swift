@@ -10,7 +10,7 @@ import AppKit
 final class MenuBarController {
     static let shared = MenuBarController()
     
-    private let statusBar = NSStatusBar()
+    private let statusBar = NSStatusBar.system
     
     private var deviceMonitorItem: NSStatusItem?
     private var todoListItem: NSStatusItem?
