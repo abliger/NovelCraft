@@ -44,13 +44,11 @@ final class MenuBarController: NSObject {
     
     @objc private func handleDeviceMonitorVisibility(_ notification: Notification) {
         guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
-        NSLog("[MenuBar] 设备监控通知: %d", isVisible)
         isVisible ? showDeviceMonitor() : hideDeviceMonitor()
     }
     
     @objc private func handleTodoListVisibility(_ notification: Notification) {
         guard let isVisible = notification.userInfo?["isVisible"] as? Bool else { return }
-        NSLog("[MenuBar] 待办清单通知: %d", isVisible)
         isVisible ? showTodoList() : hideTodoList()
     }
     
@@ -58,19 +56,19 @@ final class MenuBarController: NSObject {
     
     private func syncInitialState() {
         let plugins = PluginManager.shared.plugins
-        if let plugin = plugins.first(where: { $0.id == "com.novelcraft.plugins.devicemonitor" }), plugin.isEnabled {
-            showDeviceMonitor()
+        if let plugin = plugins.first(where: { $0.id == "com.novelcraft.plugins.devicemonitor" }) {
+            plugin.isEnabled ? showDeviceMonitor() : hideDeviceMonitor()
         }
-        if let plugin = plugins.first(where: { $0.id == "com.novelcraft.plugins.todolist" }), plugin.isEnabled {
-            showTodoList()
+        if let plugin = plugins.first(where: { $0.id == "com.novelcraft.plugins.todolist" }) {
+            plugin.isEnabled ? showTodoList() : hideTodoList()
         }
     }
     
     // MARK: - 设备监控
     
     private func showDeviceMonitor() {
-        guard deviceMonitorItem == nil else {
-            NSLog("[MenuBar] 设备监控已存在，跳过创建")
+        if let item = deviceMonitorItem {
+            item.isVisible = true
             return
         }
         let item = statusBar.statusItem(withLength: NSStatusItem.variableLength)
@@ -80,16 +78,12 @@ final class MenuBarController: NSObject {
         item.button?.target = self
         item.button?.action = #selector(toggleDeviceMonitorPopover)
         deviceMonitorItem = item
-        NSLog("[MenuBar] 设备监控图标已创建")
     }
     
     private func hideDeviceMonitor() {
         guard let item = deviceMonitorItem else { return }
         closePopover(deviceMonitorPopover)
         item.isVisible = false
-        statusBar.removeStatusItem(item)
-        deviceMonitorItem = nil
-        NSLog("[MenuBar] 设备监控图标已移除")
     }
     
     @objc private func toggleDeviceMonitorPopover(_ sender: NSStatusBarButton?) {
@@ -104,8 +98,8 @@ final class MenuBarController: NSObject {
     // MARK: - 待办清单
     
     private func showTodoList() {
-        guard todoListItem == nil else {
-            NSLog("[MenuBar] 待办清单已存在，跳过创建")
+        if let item = todoListItem {
+            item.isVisible = true
             return
         }
         let item = statusBar.statusItem(withLength: NSStatusItem.variableLength)
@@ -115,16 +109,12 @@ final class MenuBarController: NSObject {
         item.button?.target = self
         item.button?.action = #selector(toggleTodoListPopover)
         todoListItem = item
-        NSLog("[MenuBar] 待办清单图标已创建")
     }
     
     private func hideTodoList() {
         guard let item = todoListItem else { return }
         closePopover(todoListPopover)
         item.isVisible = false
-        statusBar.removeStatusItem(item)
-        todoListItem = nil
-        NSLog("[MenuBar] 待办清单图标已移除")
     }
     
     @objc private func toggleTodoListPopover(_ sender: NSStatusBarButton?) {
