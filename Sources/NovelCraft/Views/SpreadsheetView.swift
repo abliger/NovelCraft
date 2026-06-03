@@ -15,6 +15,8 @@ struct SpreadsheetView: View {
     @State private var editingCell: SpreadsheetCell?
     /// 编辑中的临时文本
     @State private var editText: String = ""
+    /// 控制当前 TextField 是否获得焦点
+    @FocusState private var isCellFocused: Bool
 
     init(project: Project) {
         self.project = project
@@ -159,20 +161,30 @@ struct SpreadsheetView: View {
                 .padding(.horizontal, 4)
                 .background(Color.accentColor.opacity(0.15))
                 .onSubmit { finishEditing() }
+                .focused($isCellFocused)
+                .onAppear {
+                    DispatchQueue.main.async {
+                        isCellFocused = true
+                    }
+                }
         } else {
             // 显示模式：纯文本，点击后进入编辑
-            Text(cell?.content ?? "")
-                .frame(width: 100, height: 30)
-                .padding(.horizontal, 4)
-                .background(Color.secondary.opacity(0.05))
-                .lineLimit(1)
-                .onTapGesture {
-                    finishEditing()
-                    if let cell = cell {
+            Button {
+                finishEditing()
+                if let cell = cell {
+                    DispatchQueue.main.async {
                         editingCell = cell
                         editText = cell.content
                     }
                 }
+            } label: {
+                Text(cell?.content ?? "")
+                    .frame(width: 100, height: 30)
+                    .padding(.horizontal, 4)
+                    .background(Color.secondary.opacity(0.05))
+                    .lineLimit(1)
+            }
+            .buttonStyle(.plain)
         }
     }
 

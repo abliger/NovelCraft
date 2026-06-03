@@ -55,10 +55,12 @@ struct ChapterTreeView: View {
     
     /// 切换指定卷的展开/收起状态
     private func toggleVolume(_ id: UUID) {
-        if expandedVolumes.contains(id) {
-            expandedVolumes.remove(id)
-        } else {
-            expandedVolumes.insert(id)
+        withAnimation {
+            if expandedVolumes.contains(id) {
+                expandedVolumes.remove(id)
+            } else {
+                expandedVolumes.insert(id)
+            }
         }
     }
     

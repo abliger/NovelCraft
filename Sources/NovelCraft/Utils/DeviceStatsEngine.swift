@@ -1,13 +1,10 @@
 import Foundation
-#if canImport(Metal)
-import Metal
-#endif
 
 #if os(macOS)
 import Darwin
 import MachO
 
-/// 设备统计引擎，负责采集 CPU、内存、GPU 与网络的使用数据。
+/// 设备统计引擎，负责采集 CPU、内存与网络的使用数据。
 ///
 /// 通过定时采样（默认 5 秒间隔）计算差值，提供实时使用率与速率。
 @MainActor
@@ -20,8 +17,7 @@ final class DeviceStatsEngine: ObservableObject {
     @Published var memoryTotal: UInt64 = 0
     /// 内存压力百分比（0-100%）
     @Published var memoryPressure: Double = 0
-    /// GPU 名称
-    @Published var gpuName: String = "未知"
+
     /// 网络发送速率（字节/秒）
     @Published var networkSentPerSec: UInt64 = 0
     /// 网络接收速率（字节/秒）
@@ -30,8 +26,7 @@ final class DeviceStatsEngine: ObservableObject {
     @Published var networkTotalSent: UInt64 = 0
     /// 累计网络接收（字节）
     @Published var networkTotalRecv: UInt64 = 0
-    /// 采样时间戳
-    @Published var lastUpdateTime: Date = Date()
+
     
     private var timer: Timer?
     private var previousCPUInfo: host_cpu_load_info_data_t?
@@ -41,13 +36,14 @@ final class DeviceStatsEngine: ObservableObject {
     init() {
         fetchStaticInfo()
     }
+
     
     deinit {
         timer?.invalidate()
     }
     
     /// 开始定时采样。
-    func startMonitoring(interval: TimeInterval = 5.0) {
+    func startMonitoring(interval: TimeInterval = 1.0) {
         stopMonitoring()
         // 延迟首次采样，避免在 SwiftUI view update 中发布状态变化
         DispatchQueue.main.async { [weak self] in
@@ -76,7 +72,6 @@ final class DeviceStatsEngine: ObservableObject {
         sampleCPU()
         sampleMemory()
         sampleNetwork(currentTime: now)
-        lastUpdateTime = now
     }
     
     // MARK: - CPU
@@ -142,13 +137,6 @@ final class DeviceStatsEngine: ObservableObject {
         var totalMemory: UInt64 = 0
         sysctl(&mib, 2, &totalMemory, &size, nil, 0)
         memoryTotal = totalMemory
-        
-        // GPU 名称
-        #if canImport(Metal)
-        if let device = MTLCreateSystemDefaultDevice() {
-            gpuName = device.name
-        }
-        #endif
     }
     
     // MARK: - 网络

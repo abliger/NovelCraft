@@ -2,34 +2,28 @@ import SwiftUI
 
 #if os(macOS)
 
-/// 设备监控面板视图，实时展示 CPU、内存、GPU 与网络的使用情况。
+/// 设备监控面板视图，实时展示 CPU、内存与网络的使用情况。
 struct DeviceMonitorView: View {
     @StateObject private var engine = DeviceStatsEngine()
     
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             header
+                .padding([.horizontal, .top])
             
             Divider()
+                .padding(.vertical, 10)
             
-            ScrollView {
-                VStack(spacing: 16) {
-                    CPUMonitorCard(usage: engine.cpuUsage)
-                    MemoryMonitorCard(used: engine.memoryUsed, total: engine.memoryTotal, pressure: engine.memoryPressure)
-                    GPUMonitorCard(name: engine.gpuName)
-                    NetworkMonitorCard(sent: engine.networkSentPerSec, recv: engine.networkRecvPerSec, totalSent: engine.networkTotalSent, totalRecv: engine.networkTotalRecv)
-                }
-                .padding(.horizontal)
+            VStack(spacing: 10) {
+                CPUMonitorCard(usage: engine.cpuUsage)
+                MemoryMonitorCard(used: engine.memoryUsed, total: engine.memoryTotal, pressure: engine.memoryPressure)
+                NetworkMonitorCard(sent: engine.networkSentPerSec, recv: engine.networkRecvPerSec, totalSent: engine.networkTotalSent, totalRecv: engine.networkTotalRecv)
             }
+            .padding(.horizontal)
             
-            Spacer()
-            
-            Text("最后更新: \(engine.lastUpdateTime, style: .time)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.bottom, 8)
+            Spacer(minLength: 0)
         }
-        .frame(width: 380, height: 520)
+        .frame(width: 360, height: 460)
         .onAppear {
             engine.startMonitoring()
         }
@@ -39,7 +33,7 @@ struct DeviceMonitorView: View {
     }
     
     private var header: some View {
-        HStack {
+        HStack(spacing: 8) {
             Image(systemName: "cpu")
                 .font(.title2)
                 .foregroundStyle(Color.accentColor)
@@ -48,7 +42,6 @@ struct DeviceMonitorView: View {
                 .fontWeight(.bold)
             Spacer()
         }
-        .padding([.horizontal, .top])
     }
 }
 
@@ -59,30 +52,30 @@ struct CPUMonitorCard: View {
     
     var body: some View {
         MonitorCard(icon: "cpu", title: "CPU", color: .orange) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("使用率")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
                     Text(String(format: "%.1f%%", usage))
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundStyle(usageColor)
                 }
                 
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.secondary.opacity(0.15))
-                            .frame(height: 8)
+                            .fill(Color.secondary.opacity(0.12))
+                            .frame(height: 6)
                         
                         RoundedRectangle(cornerRadius: 4)
                             .fill(usageColor)
-                            .frame(width: geo.size.width * min(CGFloat(usage) / 100.0, 1.0), height: 8)
+                            .frame(width: geo.size.width * min(CGFloat(usage) / 100.0, 1.0), height: 6)
                             .animation(.easeInOut(duration: 0.5), value: usage)
                     }
                 }
-                .frame(height: 8)
+                .frame(height: 6)
             }
         }
     }
@@ -103,29 +96,29 @@ struct MemoryMonitorCard: View {
     
     var body: some View {
         MonitorCard(icon: "memorychip", title: "内存", color: .blue) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("已用 / 总计")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
                     Text("\(DeviceStatsEngine.formatBytes(used)) / \(DeviceStatsEngine.formatBytes(total))")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
                 }
                 
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.secondary.opacity(0.15))
-                            .frame(height: 8)
+                            .fill(Color.secondary.opacity(0.12))
+                            .frame(height: 6)
                         
                         RoundedRectangle(cornerRadius: 4)
                             .fill(pressureColor)
-                            .frame(width: geo.size.width * min(CGFloat(pressure) / 100.0, 1.0), height: 8)
+                            .frame(width: geo.size.width * min(CGFloat(pressure) / 100.0, 1.0), height: 6)
                             .animation(.easeInOut(duration: 0.5), value: pressure)
                     }
                 }
-                .frame(height: 8)
+                .frame(height: 6)
                 
                 HStack {
                     Spacer()
@@ -144,26 +137,6 @@ struct MemoryMonitorCard: View {
     }
 }
 
-// MARK: - GPU 卡片
-
-struct GPUMonitorCard: View {
-    let name: String
-    
-    var body: some View {
-        MonitorCard(icon: "display", title: "GPU", color: .purple) {
-            HStack {
-                Text("设备")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
-            }
-        }
-    }
-}
-
 // MARK: - 网络卡片
 
 struct NetworkMonitorCard: View {
@@ -174,14 +147,14 @@ struct NetworkMonitorCard: View {
     
     var body: some View {
         MonitorCard(icon: "network", title: "网络", color: .teal) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 20) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
                         Label("上传", systemImage: "arrow.up")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(DeviceStatsEngine.formatSpeed(sent))
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(.orange)
                     }
                     
@@ -190,14 +163,16 @@ struct NetworkMonitorCard: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(DeviceStatsEngine.formatSpeed(recv))
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(.green)
                     }
+                    
+                    Spacer(minLength: 0)
                 }
                 
                 Divider()
                 
-                HStack(spacing: 20) {
+                HStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("累计上传")
                             .font(.caption2)
@@ -215,6 +190,8 @@ struct NetworkMonitorCard: View {
                             .font(.caption)
                             .fontWeight(.medium)
                     }
+                    
+                    Spacer(minLength: 0)
                 }
             }
         }
@@ -230,7 +207,7 @@ struct MonitorCard<Content: View>: View {
     @ViewBuilder let content: Content
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
                     .foregroundStyle(color)
@@ -243,7 +220,7 @@ struct MonitorCard<Content: View>: View {
             
             content
         }
-        .padding()
+        .padding(12)
         .background(Color.secondary.opacity(0.06))
         .cornerRadius(10)
     }

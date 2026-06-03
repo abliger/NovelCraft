@@ -3,13 +3,13 @@ import SwiftUI
 
 /// 设备监控插件。
 ///
-/// 启用后在 macOS 菜单栏中添加设备监控图标，点击后展示 CPU、内存、GPU 与网络的实时使用情况。
+/// 启用后在 macOS 菜单栏中添加设备监控图标，点击后展示 CPU、内存与网络的实时使用情况。
 /// 仅支持 macOS。
 @MainActor
 final class DeviceMonitorPlugin: NovelCraftPlugin {
     let id = "com.novelcraft.plugins.devicemonitor"
     let name = "设备监控"
-    let description = "在菜单栏中实时监控 CPU、内存、GPU 与网络的使用情况。"
+    let description = "在菜单栏中实时监控 CPU、内存与网络的使用情况。"
     let version = "1.0.0"
     let author = "NovelCraft 官方"
     var isEnabled: Bool = true {
