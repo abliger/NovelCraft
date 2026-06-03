@@ -288,7 +288,8 @@ struct PluginManagementRow: View {
                     if isConfigurable { onConfig() }
                 } label: {
                     Image(systemName: "gear")
-                        .foregroundStyle(isConfigurable ? .secondary : .secondary.opacity(0.3))
+                        .foregroundStyle(.secondary)
+                        .opacity(isConfigurable ? 1.0 : 0.3)
                 }
                 .buttonStyle(.borderless)
                 .help(isConfigurable ? "插件配置" : "该插件不支持配置")
@@ -301,7 +302,8 @@ struct PluginManagementRow: View {
                     if canDelete, let action = onDelete { action() }
                 } label: {
                     Image(systemName: "trash")
-                        .foregroundStyle(canDelete ? .red.opacity(0.7) : .red.opacity(0.2))
+                        .foregroundStyle(.red)
+                        .opacity(canDelete ? 0.7 : 0.2)
                 }
                 .buttonStyle(.borderless)
                 .help(canDelete ? "删除插件" : "内置插件不可删除")
