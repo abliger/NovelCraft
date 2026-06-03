@@ -26,6 +26,10 @@ final class Project {
     var targetWordCount: Int
     /// 每日写作目标字数
     var dailyWordGoal: Int
+    /// 项目类型：novel（小说项目）或 note（笔记项目）
+    var projectType: String
+    /// 联动项目 ID（笔记项目可关联到小说项目）
+    var linkedProjectID: UUID?
     
     /// 关联的卷列表（级联删除）
     @Relationship(deleteRule: .cascade, inverse: \Volume.project)
@@ -62,7 +66,9 @@ final class Project {
         storagePath: String,
         bookOutline: String = "",
         targetWordCount: Int = 50000,
-        dailyWordGoal: Int = 2000
+        dailyWordGoal: Int = 2000,
+        projectType: String = "novel",
+        linkedProjectID: UUID? = nil
     ) {
         self.id = UUID()
         self.title = title
@@ -74,6 +80,8 @@ final class Project {
         self.updatedAt = Date()
         self.targetWordCount = targetWordCount
         self.dailyWordGoal = dailyWordGoal
+        self.projectType = projectType
+        self.linkedProjectID = linkedProjectID
     }
     
     /// 计算当前项目下所有卷的总字数

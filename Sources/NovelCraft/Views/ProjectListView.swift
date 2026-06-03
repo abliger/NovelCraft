@@ -143,6 +143,17 @@ struct ProjectCard: View {
                         .font(.headline)
                         .lineLimit(1)
                     
+                    if project.projectType == "note" {
+                        Text("笔记")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundStyle(.orange)
+                            .cornerRadius(4)
+                    }
+                    
                     Spacer()
                     
                     if let coverImageData {
@@ -152,10 +163,12 @@ struct ProjectCard: View {
                     }
                 }
                 
-                Text(project.author.isEmpty ? "未填写作者" : project.author)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if project.projectType != "note" {
+                    Text(project.author.isEmpty ? "未填写作者" : project.author)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 
                 Text(project.summary)
                     .font(.caption)
@@ -164,18 +177,20 @@ struct ProjectCard: View {
                 
                 Spacer()
                 
-                HStack {
-                    Text("\(project.totalWordCount) 字")
-                        .font(.caption2)
-                    
-                    Spacer()
-                    
-                    ProgressView(value: project.progressPercentage)
-                        .frame(width: 60)
-                    
-                    Text("\(Int(project.progressPercentage * 100))%")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                if project.projectType != "note" {
+                    HStack {
+                        Text("\(project.totalWordCount) 字")
+                            .font(.caption2)
+                        
+                        Spacer()
+                        
+                        ProgressView(value: project.progressPercentage)
+                            .frame(width: 60)
+                        
+                        Text("\(Int(project.progressPercentage * 100))%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .padding()
@@ -225,6 +240,8 @@ struct ProjectInfoView: View {
     @State private var coverImageData: Data? = nil
     @State private var targetWordCount = 50000
     @State private var dailyWordGoal = 2000
+    @State private var linkedProjectID: UUID? = nil
+    @State private var allNovelProjects: [ProjectMeta] = []
     #if os(iOS)
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
     #endif
@@ -282,7 +299,9 @@ struct ProjectInfoView: View {
                     
                     Section("基本信息") {
                         TextField("小说名称", text: $title)
-                        TextField("作者", text: $author)
+                        if meta.projectType != "note" {
+                            TextField("作者", text: $author)
+                        }
                         TextEditor(text: $summary)
                             .frame(height: 60)
                     }
@@ -297,9 +316,32 @@ struct ProjectInfoView: View {
                         }
                     }
                     
-                    Section("写作目标") {
-                        Stepper("目标字数: \(targetWordCount)", value: $targetWordCount, step: 5000)
-                        Stepper("每日目标: \(dailyWordGoal)", value: $dailyWordGoal, step: 500)
+                    if meta.projectType != "note" {
+                        Section("写作目标") {
+                            Stepper("目标字数: \(targetWordCount)", value: $targetWordCount, step: 5000)
+                            Stepper("每日目标: \(dailyWordGoal)", value: $dailyWordGoal, step: 500)
+                        }
+                    }
+                    
+                    if meta.projectType == "note" {
+                        Section("联动设置") {
+                            Picker("联动小说项目", selection: $linkedProjectID) {
+                                Text("不联动").tag(UUID?.none)
+                                ForEach(allNovelProjects) { project in
+                                    Text(project.title).tag(Optional(project.id))
+                                }
+                            }
+                        }
+                    } else if let linkedNote = allNovelProjects.first(where: { $0.linkedProjectID == meta.id }) {
+                        // 小说项目被笔记项目联动时，只读显示
+                        Section("联动设置") {
+                            HStack {
+                                Text("被笔记项目联动")
+                                Spacer()
+                                Text(linkedNote.title)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
                 .formStyle(.grouped)
@@ -325,6 +367,8 @@ struct ProjectInfoView: View {
             summary = meta.summary
             targetWordCount = meta.targetWordCount
             dailyWordGoal = meta.dailyWordGoal
+            linkedProjectID = meta.linkedProjectID
+            allNovelProjects = ProjectRegistry.shared.loadProjects().filter { $0.projectType == "novel" }
             loadCoverData()
         }
     }
@@ -347,6 +391,7 @@ struct ProjectInfoView: View {
         updatedMeta.targetWordCount = targetWordCount
         updatedMeta.dailyWordGoal = dailyWordGoal
         updatedMeta.updatedAt = Date()
+        updatedMeta.linkedProjectID = linkedProjectID
         
         let coverPath = (meta.storagePath as NSString).appendingPathComponent("cover.png")
         if let coverData = coverImageData {
@@ -370,6 +415,7 @@ struct ProjectInfoView: View {
                 project.summary = summary
                 project.targetWordCount = targetWordCount
                 project.dailyWordGoal = dailyWordGoal
+                project.linkedProjectID = linkedProjectID
                 project.updatedAt = Date()
                 try context.save()
             }
@@ -393,6 +439,9 @@ struct NewProjectView: View {
     @State private var baseStoragePath: String? = nil
     @State private var targetWordCount = 50000
     @State private var dailyWordGoal = 2000
+    @State private var projectType = ProjectType.novel
+    @State private var linkedProjectID: UUID? = nil
+    @State private var allNovelProjects: [ProjectMeta] = []
     #if os(iOS)
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
     #endif
@@ -452,8 +501,31 @@ struct NewProjectView: View {
                     }
                     
                     Section("基本信息") {
-                        TextField("小说名称", text: $title)
-                        TextField("作者", text: $author)
+                        Picker("项目类型", selection: $projectType) {
+                            ForEach(ProjectType.allCases, id: \.self) { type in
+                                Text(type.displayName).tag(type)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: projectType) { _, newValue in
+                            if newValue == .novel {
+                                linkedProjectID = nil
+                            }
+                        }
+                        
+                        if projectType == .note {
+                            Picker("联动小说项目", selection: $linkedProjectID) {
+                                Text("不联动").tag(UUID?.none)
+                                ForEach(allNovelProjects) { meta in
+                                    Text(meta.title).tag(Optional(meta.id))
+                                }
+                            }
+                        }
+                        
+                        TextField(projectType == .novel ? "小说名称" : "笔记名称", text: $title)
+                        if projectType == .novel {
+                            TextField("作者", text: $author)
+                        }
                         TextEditor(text: $summary)
                             .frame(height: 60)
                     }
@@ -484,9 +556,11 @@ struct NewProjectView: View {
                     }
                     #endif
                     
-                    Section("写作目标") {
-                        Stepper("目标字数: \(targetWordCount)", value: $targetWordCount, step: 5000)
-                        Stepper("每日目标: \(dailyWordGoal)", value: $dailyWordGoal, step: 500)
+                    if projectType == .novel {
+                        Section("写作目标") {
+                            Stepper("目标字数: \(targetWordCount)", value: $targetWordCount, step: 5000)
+                            Stepper("每日目标: \(dailyWordGoal)", value: $dailyWordGoal, step: 500)
+                        }
                     }
                 }
                 .formStyle(.grouped)
@@ -506,6 +580,9 @@ struct NewProjectView: View {
             .padding()
         }
         .frame(minWidth: 450, idealWidth: 450, minHeight: 400, idealHeight: 520)
+        .onAppear {
+            allNovelProjects = ProjectRegistry.shared.loadProjects().filter { $0.projectType == "novel" }
+        }
         .alert("项目已存在", isPresented: $showPathExistsAlert) {
             Button("确定", role: .cancel) {}
         } message: {
@@ -544,17 +621,21 @@ struct NewProjectView: View {
                 summary: summary,
                 storagePath: projectPath,
                 targetWordCount: targetWordCount,
-                dailyWordGoal: dailyWordGoal
+                dailyWordGoal: dailyWordGoal,
+                projectType: projectType.rawValue,
+                linkedProjectID: linkedProjectID
             )
             context.insert(project)
             
-            let volume = Volume(title: "第一卷", order: 0)
-            volume.project = project
-            context.insert(volume)
-            
-            let chapter = Chapter(title: "第一章", order: 0)
-            chapter.volume = volume
-            context.insert(chapter)
+            if projectType == .novel {
+                let volume = Volume(title: "第一卷", order: 0)
+                volume.project = project
+                context.insert(volume)
+                
+                let chapter = Chapter(title: "第一章", order: 0)
+                chapter.volume = volume
+                context.insert(chapter)
+            }
             
             try context.save()
             
@@ -569,7 +650,9 @@ struct NewProjectView: View {
                 targetWordCount: targetWordCount,
                 dailyWordGoal: dailyWordGoal,
                 totalWordCount: 0,
-                progressPercentage: 0
+                progressPercentage: 0,
+                projectType: projectType.rawValue,
+                linkedProjectID: linkedProjectID
             )
             ProjectRegistry.shared.addProject(meta)
             

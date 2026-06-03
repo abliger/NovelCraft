@@ -75,15 +75,27 @@ struct ChapterTreeView: View {
         expandedVolumes.insert(volume.id)
     }
     
-    /// 在最后一个卷中新建一个章节
+    /// 在当前上下文中新建一个章节。
+    /// 优先添加到当前选中章节所属的卷；若未选中章节，则添加到当前唯一展开的卷；否则添加到最后一卷。
     private func addChapter() {
-        guard let volume = sortedVolumes.last else { return }
+        let targetVolume: Volume?
+        if let chapter = selectedChapter {
+            targetVolume = chapter.volume
+        } else if expandedVolumes.count == 1,
+                  let volumeID = expandedVolumes.first {
+            targetVolume = sortedVolumes.first { $0.id == volumeID }
+        } else {
+            targetVolume = sortedVolumes.last
+        }
+        
+        guard let volume = targetVolume else { return }
         let order = volume.chapters.count
         let chapter = Chapter(title: "第\(order + 1)章", order: order)
         chapter.volume = volume
         modelContext.insert(chapter)
         try? modelContext.save()
         selectedChapter = chapter
+        expandedVolumes.insert(volume.id)
     }
 }
 

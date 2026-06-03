@@ -102,6 +102,11 @@ struct ContentView: View {
             return
         }
         
+        // 笔记项目不需要右侧边栏
+        if meta.projectType == "note" {
+            isRightSidebarVisible = false
+        }
+        
         // 释放旧容器
         closeProject()
 
@@ -150,7 +155,9 @@ struct ContentView: View {
                 summary: meta.summary,
                 storagePath: meta.storagePath,
                 targetWordCount: meta.targetWordCount,
-                dailyWordGoal: meta.dailyWordGoal
+                dailyWordGoal: meta.dailyWordGoal,
+                projectType: meta.projectType,
+                linkedProjectID: meta.linkedProjectID
             )
             newProject.id = meta.id
             context.insert(newProject)
@@ -189,6 +196,8 @@ struct ContentView: View {
         project.storagePath = meta.storagePath
         project.targetWordCount = meta.targetWordCount
         project.dailyWordGoal = meta.dailyWordGoal
+        project.projectType = meta.projectType
+        project.linkedProjectID = meta.linkedProjectID
         try? context.save()
     }
 
@@ -204,6 +213,7 @@ struct ContentView: View {
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 280)
         } detail: {
+
             HStack(spacing: 0) {
                 Group {
                     if isSpreadsheetActive {
@@ -231,6 +241,7 @@ struct ContentView: View {
             }
             .animation(.default, value: isRightSidebarVisible)
         }
+        .id("split_\(project.id)")
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
@@ -251,6 +262,23 @@ struct ContentView: View {
                     Image(systemName: isSpreadsheetActive ? "doc.text" : "tablecells")
                 }
                 .help(isSpreadsheetActive ? "返回编辑器" : "电子表格")
+                
+                let hasLinkedProject = currentProject.map {
+                    ProjectRegistry.shared.findLinkedProjectID(for: $0.id) != nil
+                } ?? false
+                Button {
+                    if let project = currentProject,
+                       let linkedID = ProjectRegistry.shared.findLinkedProjectID(for: project.id) {
+                        selectedProjectID = linkedID
+                        isSpreadsheetActive = false
+                        selectedChapter = nil
+                    }
+                } label: {
+                    Image(systemName: "arrow.left.arrow.right.circle")
+                        .opacity(hasLinkedProject ? 1.0 : 0.3)
+                }
+                .disabled(!hasLinkedProject)
+                .help(hasLinkedProject ? "跳转到联动项目" : "未设置联动项目")
             }
 
             ToolbarItem {
@@ -283,17 +311,19 @@ struct ContentView: View {
                 }
             #endif
 
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    withAnimation {
-                        isRightSidebarVisible.toggle()
+            if currentProject?.projectType != "note" {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        withAnimation {
+                            isRightSidebarVisible.toggle()
+                        }
+                    } label: {
+                        Image(
+                            systemName: isRightSidebarVisible
+                                ? "sidebar.right" : "arrow.backward.to.line")
                     }
-                } label: {
-                    Image(
-                        systemName: isRightSidebarVisible
-                            ? "sidebar.right" : "arrow.backward.to.line")
+                    .help(isRightSidebarVisible ? "隐藏边栏" : "显示边栏")
                 }
-                .help(isRightSidebarVisible ? "隐藏边栏" : "显示边栏")
             }
         }
     }
