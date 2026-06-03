@@ -40,6 +40,8 @@ struct EditorView: View {
     @State private var toolbarItems: [PluginToolbarItem] = []
     /// 是否显示图片插入面板
     @State private var showImageInsert = false
+    /// 是否显示 AI 生成面板
+    @State private var showAIGeneration = false
     /// 图片处理方式（从设置读取）
     @AppStorage("imageHandlingMode") private var imageHandlingMode = 1
     /// 是否允许下载网络图片
@@ -148,6 +150,12 @@ struct EditorView: View {
             ImageInsertView(project: project) { markdown in
                 insertImageMarkdown(markdown)
             }
+        }
+        .sheet(isPresented: $showAIGeneration) {
+            AIGenerationPanelView()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aiGenerationPanelToggle)) { _ in
+            showAIGeneration = true
         }
         #if os(macOS)
         .dropDestination(for: URL.self) { urls, location in

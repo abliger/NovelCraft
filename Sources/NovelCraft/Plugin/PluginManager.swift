@@ -83,6 +83,7 @@ final class PluginManager: ObservableObject {
         register(SensitiveWordCheckPlugin(), isBuiltIn: true)
         register(RepeatedWordCheckPlugin(), isBuiltIn: true)
         register(TodoListPlugin(), isBuiltIn: true)
+        register(AIGenerationPlugin(), isBuiltIn: true)
         #if os(macOS)
         register(DeviceMonitorPlugin(), isBuiltIn: true)
         register(CountdownPlugin(), isBuiltIn: true)
