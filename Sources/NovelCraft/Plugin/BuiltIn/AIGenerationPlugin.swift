@@ -41,7 +41,7 @@ final class AIGenerationPlugin: NovelCraftPlugin, EditorToolbarContributor, Plug
                 NotificationCenter.default.post(
                     name: .aiGenerationPanelToggle,
                     object: nil,
-                    userInfo: ["pluginID": self?.id]
+                    userInfo: ["pluginID": self?.id as Any]
                 )
             }
         ]

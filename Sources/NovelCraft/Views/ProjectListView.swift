@@ -13,8 +13,7 @@ struct ProjectListView: View {
     @State private var searchText = ""
     @State private var projectToDelete: ProjectMeta? = nil
     @State private var projectToEdit: ProjectMeta? = nil
-    @State private var isShowingPluginManager = false
-    
+
     /// 根据搜索文本过滤后的项目列表
     private var filteredProjects: [ProjectMeta] {
         if searchText.isEmpty { return projects }
@@ -58,12 +57,6 @@ struct ProjectListView: View {
         .sheet(item: $projectToEdit) { meta in
             ProjectInfoView(meta: meta, onSaved: loadProjects)
         }
-        .sheet(isPresented: $isShowingPluginManager) {
-            PluginSettingsView()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .showPluginManager)) { _ in
-            isShowingPluginManager = true
-        }
         .alert("确认删除", isPresented: Binding(
             get: { projectToDelete != nil },
             set: { if !$0 { projectToDelete = nil } }
@@ -106,7 +99,7 @@ struct ProjectListView: View {
             Spacer()
             
             Button {
-                isShowingPluginManager = true
+                NotificationCenter.default.post(name: .showPluginManager, object: nil)
             } label: {
                 Image(systemName: "puzzlepiece.extension")
                     .foregroundStyle(.secondary)
