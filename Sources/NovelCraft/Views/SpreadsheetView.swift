@@ -79,6 +79,11 @@ struct SpreadsheetView: View {
         .onChange(of: selectedSheet) { _, _ in
             loadCells()
         }
+        .onChange(of: isCellFocused) { _, focused in
+            if !focused {
+                finishEditing()
+            }
+        }
     }
 
     // MARK: - 子视图
@@ -385,6 +390,7 @@ struct SpreadsheetView: View {
 
     /// 将当前选中区域序列化为 TSV 并保存到应用内部剪贴板与系统剪贴板。
     private func copySelection() {
+        finishEditing()
         guard selectionStart != nil, selectionEnd != nil else { return }
         let tsv = tsvFromSelection()
         clipboardTsv = tsv
