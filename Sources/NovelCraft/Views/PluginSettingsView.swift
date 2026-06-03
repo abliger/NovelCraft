@@ -269,39 +269,46 @@ struct PluginManagementRow: View {
             .labelsHidden()
             .frame(width: 44)
             
-            // 详情按钮
-            Button {
-                onDetail()
-            } label: {
-                Image(systemName: "info.circle")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help("查看详情")
-            
-            // 配置按钮（仅可配置插件）
-            if plugin is any PluginConfigurable {
+            // 固定宽度的操作按钮组，保证所有行对齐
+            HStack(spacing: 8) {
+                // 详情按钮
                 Button {
-                    onConfig()
+                    onDetail()
                 } label: {
-                    Image(systemName: "gear")
+                    Image(systemName: "info.circle")
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
-                .help("插件配置")
-            }
-            
-            // 删除按钮（仅外部插件）
-            if let onDelete = onDelete {
+                .help("查看详情")
+                .frame(width: 24)
+                
+                // 配置按钮（不可配置时禁用）
+                let isConfigurable = plugin is any PluginConfigurable
                 Button {
-                    onDelete()
+                    if isConfigurable { onConfig() }
                 } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(.red.opacity(0.7))
+                    Image(systemName: "gear")
+                        .foregroundStyle(isConfigurable ? .secondary : .secondary.opacity(0.3))
                 }
                 .buttonStyle(.borderless)
-                .help("删除插件")
+                .help(isConfigurable ? "插件配置" : "该插件不支持配置")
+                .disabled(!isConfigurable)
+                .frame(width: 24)
+                
+                // 删除按钮（内置插件时禁用）
+                let canDelete = onDelete != nil
+                Button {
+                    if canDelete, let action = onDelete { action() }
+                } label: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(canDelete ? .red.opacity(0.7) : .red.opacity(0.2))
+                }
+                .buttonStyle(.borderless)
+                .help(canDelete ? "删除插件" : "内置插件不可删除")
+                .disabled(!canDelete)
+                .frame(width: 24)
             }
+            .frame(width: 96)
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
