@@ -75,6 +75,7 @@ struct AIGenerationPanelView: View {
     @State private var isGenerating = false
     @State private var errorMessage: String? = nil
     @State private var generationMode: GenerationMode = .continueWriting
+    @State private var showConfig = false
     
     private var plugin: AIGenerationPlugin? {
         PluginManager.shared.plugins.first(where: { $0.id == "com.novelcraft.plugins.aigeneration" }) as? AIGenerationPlugin
@@ -113,6 +114,16 @@ struct AIGenerationPanelView: View {
             Text("AI 生成")
                 .font(.headline)
             Spacer()
+            Button {
+                withAnimation {
+                    showConfig.toggle()
+                }
+            } label: {
+                Image(systemName: showConfig ? "gear" : "gear")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(showConfig ? "收起配置" : "展开配置")
         }
         .padding()
         .background(.ultraThinMaterial)
@@ -120,47 +131,68 @@ struct AIGenerationPanelView: View {
     
     private var configSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("配置")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-            
-            // 品牌选择
-            HStack {
-                Text("品牌")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 50, alignment: .leading)
-                Picker("", selection: $selectedStrategyID) {
-                    ForEach(plugin?.strategies ?? [], id: \.id) { strategy in
-                        Text(strategy.displayName).tag(strategy.id)
+            if showConfig {
+                Text("配置")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                
+                // 品牌选择
+                HStack {
+                    Text("品牌")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 50, alignment: .leading)
+                    Picker("", selection: $selectedStrategyID) {
+                        ForEach(plugin?.strategies ?? [], id: \.id) { strategy in
+                            Text(strategy.displayName).tag(strategy.id)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: selectedStrategyID) { _, newID in
+                        if let strategy = plugin?.strategies.first(where: { $0.id == newID }) {
+                            selectedModel = strategy.defaultModel
+                        }
                     }
                 }
-                .pickerStyle(.segmented)
-                .onChange(of: selectedStrategyID) { _, newID in
-                    if let strategy = plugin?.strategies.first(where: { $0.id == newID }) {
-                        selectedModel = strategy.defaultModel
-                    }
+                
+                // API Key
+                HStack {
+                    Text("API Key")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 50, alignment: .leading)
+                    SecureField("输入 API Key", text: $apiKey)
+                        .textFieldStyle(.roundedBorder)
                 }
-            }
-            
-            // API Key
-            HStack {
-                Text("API Key")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 50, alignment: .leading)
-                SecureField("输入 API Key", text: $apiKey)
-                    .textFieldStyle(.roundedBorder)
-            }
-            
-            // 模型选择
-            HStack {
-                Text("模型")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 50, alignment: .leading)
-                TextField("模型名称", text: $selectedModel)
-                    .textFieldStyle(.roundedBorder)
+                
+                // 模型选择
+                HStack {
+                    Text("模型")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 50, alignment: .leading)
+                    TextField("模型名称", text: $selectedModel)
+                        .textFieldStyle(.roundedBorder)
+                }
+            } else {
+                HStack {
+                    Text("品牌: \(plugin?.strategies.first(where: { $0.id == selectedStrategyID })?.displayName ?? selectedStrategyID)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("模型: \(selectedModel)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if apiKey.isEmpty {
+                    Text("⚠️ 尚未配置 API Key，点击右上角 ⚙️ 进行配置")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else {
+                    Text("API Key: \(String(repeating: "•", count: min(apiKey.count, 12)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

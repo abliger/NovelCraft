@@ -1,6 +1,23 @@
 import SwiftData
 import SwiftUI
 
+/// 右侧辅助面板标签枚举。
+enum RightPanelTab: String, CaseIterable {
+    case characters = "角色"
+    case world = "世界观"
+    case outline = "大纲"
+    case notes = "便签"
+
+    var icon: String {
+        switch self {
+        case .characters: return "person.2"
+        case .world: return "globe"
+        case .outline: return "list.bullet.indent"
+        case .notes: return "note.text"
+        }
+    }
+}
+
 /// 应用主界面视图，负责管理项目选择、侧边栏导航、编辑器展示与全局工具栏。
 struct ContentView: View {
     /// 当前选中的项目 ID（nil 表示处于项目列表）
@@ -10,8 +27,14 @@ struct ContentView: View {
     /// 当前项目的数据库实例
     @State private var currentProject: Project?
 
+    /// 右侧辅助边栏是否显示
+    @State private var isRightSidebarVisible: Bool = false
     /// 是否显示电子表格
     @State private var isSpreadsheetActive: Bool = false
+    /// 右侧辅助边栏当前选中的标签
+    @State private var rightSidebarTab: RightPanelTab = .characters
+    /// 当前选中的插件面板 ID
+    @State private var selectedPluginPanelID: String? = nil
     /// 当前选中的章节
     @State private var selectedChapter: Chapter? = nil
     /// 是否进入专注模式
@@ -156,7 +179,9 @@ struct ContentView: View {
         try? context.save()
     }
 
-    /// 主编辑界面：左侧 NavigationSplitView + 编辑器详情区。
+    /// 主编辑界面：左侧 NavigationSplitView + 右侧条件渲染的辅助面板。
+    /// 注意：macOS 上 .inspector 在 resize 时存在 AppKit 布局崩溃的已知问题，
+    /// 因此改用 HStack 条件渲染实现右侧边栏。
     @ViewBuilder
     private func mainInterface(project: Project) -> some View {
         NavigationSplitView {
@@ -166,20 +191,32 @@ struct ContentView: View {
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 280)
         } detail: {
-            Group {
-                if isSpreadsheetActive {
-                    SpreadsheetView(project: project)
-                } else if let chapter = selectedChapter {
-                    EditorView(
-                        project: project,
-                        chapter: chapter
-                    )
-                    .id(chapter.id)
-                } else {
-                    EmptyEditorView(project: project)
+            HStack(spacing: 0) {
+                Group {
+                    if isSpreadsheetActive {
+                        SpreadsheetView(project: project)
+                    } else if let chapter = selectedChapter {
+                        EditorView(
+                            project: project,
+                            chapter: chapter
+                        )
+                        .id(chapter.id)
+                    } else {
+                        EmptyEditorView(project: project)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if isRightSidebarVisible {
+                    HStack(spacing: 0) {
+                        Divider()
+                        rightSidebar(project: project)
+                            .frame(minWidth: 200, idealWidth: 280, maxWidth: 400)
+                    }
+                    .transition(.move(edge: .trailing))
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.default, value: isRightSidebarVisible)
         }
         .toolbar {
             ToolbarItemGroup(placement: .navigation) {
@@ -232,6 +269,111 @@ struct ContentView: View {
                     .help("设置")
                 }
             #endif
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    withAnimation {
+                        isRightSidebarVisible.toggle()
+                    }
+                } label: {
+                    Image(
+                        systemName: isRightSidebarVisible
+                            ? "sidebar.right" : "arrow.backward.to.line")
+                }
+                .help(isRightSidebarVisible ? "隐藏边栏" : "显示边栏")
+            }
+        }
+    }
+
+    /// 右侧辅助面板内容。
+    @ViewBuilder
+    private func rightSidebar(project: Project) -> some View {
+        VStack(spacing: 0) {
+            // 顶部分段选择器
+            // 注意：macOS 上 .segmented Picker 底层为 NSSegmentedControl，
+            // 在面板宽度变化时极易触发 AppKit 布局断言崩溃，因此统一使用纯 SwiftUI 按钮组。
+            let pluginPanels = PluginManager.shared.allSidebarPanels
+            if pluginPanels.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(RightPanelTab.allCases, id: \.self) { tab in
+                        Button {
+                            selectedPluginPanelID = nil
+                            rightSidebarTab = tab
+                        } label: {
+                            Image(systemName: tab.icon)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(rightSidebarTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
+                                .foregroundStyle(rightSidebarTab == tab ? .primary : .secondary)
+                                .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+            } else {
+                pluginTabPicker(pluginPanels: pluginPanels)
+                    .padding()
+            }
+
+            Divider()
+
+            // 面板内容
+            if let panelID = selectedPluginPanelID,
+               let panel = pluginPanels.first(where: { $0.id == panelID }) {
+                panel.content()
+            } else {
+                switch rightSidebarTab {
+                case .characters:
+                    CharacterListView(project: project)
+                case .world:
+                    WorldSettingListView(project: project)
+                case .outline:
+                    OutlineView(project: project)
+                case .notes:
+                    NoteListView(project: project)
+                }
+            }
+        }
+    }
+    
+    /// 扩展的标签选择器，同时支持原生面板和插件面板。
+    @ViewBuilder
+    private func pluginTabPicker(pluginPanels: [PluginSidebarPanel]) -> some View {
+        HStack(spacing: 4) {
+            ForEach(RightPanelTab.allCases, id: \.self) { tab in
+                Button {
+                    selectedPluginPanelID = nil
+                    rightSidebarTab = tab
+                } label: {
+                    Image(systemName: tab.icon)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(selectedPluginPanelID == nil && rightSidebarTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
+                        .foregroundStyle(selectedPluginPanelID == nil && rightSidebarTab == tab ? .primary : .secondary)
+                        .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+            
+            if !pluginPanels.isEmpty {
+                Divider().frame(height: 20)
+                
+                ForEach(pluginPanels) { panel in
+                    Button {
+                        selectedPluginPanelID = panel.id
+                    } label: {
+                        Image(systemName: panel.icon)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(selectedPluginPanelID == panel.id ? Color.accentColor.opacity(0.15) : Color.clear)
+                            .foregroundStyle(selectedPluginPanelID == panel.id ? .primary : .secondary)
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .help(panel.title)
+                }
+            }
         }
     }
 }
