@@ -114,6 +114,7 @@ struct CharacterEditView: View {
     @State private var personality = ""
     @State private var background = ""
     @State private var goals = ""
+    @State private var fate = ""
     @State private var relationships = ""
     @State private var notes = ""
     
@@ -153,6 +154,11 @@ struct CharacterEditView: View {
                         .frame(height: 80)
                 }
                 
+                Section("命运") {
+                    TextEditor(text: $fate)
+                        .frame(height: 80)
+                }
+                
                 Section("关系") {
                     TextEditor(text: $relationships)
                         .frame(height: 80)
@@ -182,6 +188,7 @@ struct CharacterEditView: View {
                 personality = char.personality
                 background = char.background
                 goals = char.goals
+                fate = char.fate
                 relationships = char.relationships
                 notes = char.notes
             }
@@ -208,6 +215,7 @@ struct CharacterEditView: View {
             char.personality = personality
             char.background = background
             char.goals = goals
+            char.fate = fate
             char.relationships = relationships
             char.notes = notes
             char.updatedAt = Date()
@@ -222,6 +230,7 @@ struct CharacterEditView: View {
                 personality: personality,
                 background: background,
                 goals: goals,
+                fate: fate,
                 relationships: relationships,
                 notes: notes,
                 order: order

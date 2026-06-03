@@ -26,6 +26,9 @@ final class Character {
     /// 目标与动机
     @Attribute(.externalStorage)
     var goals: String
+    /// 命运描述
+    @Attribute(.externalStorage)
+    var fate: String
     /// 与其他角色的关系
     @Attribute(.externalStorage)
     var relationships: String
@@ -56,6 +59,7 @@ final class Character {
         personality: String = "",
         background: String = "",
         goals: String = "",
+        fate: String = "",
         relationships: String = "",
         notes: String = "",
         order: Int = 0
@@ -69,6 +73,7 @@ final class Character {
         self.personality = personality
         self.background = background
         self.goals = goals
+        self.fate = fate
         self.relationships = relationships
         self.notes = notes
         self.createdAt = Date()

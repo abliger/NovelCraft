@@ -15,6 +15,9 @@ final class Project {
     /// 项目存储路径（包含项目名称的完整目录路径）
     // 索引由 SwiftData 自动管理
     var storagePath: String
+    /// 整本书的大纲
+    @Attribute(.externalStorage)
+    var bookOutline: String
     /// 创建时间
     var createdAt: Date
     /// 最后更新时间
@@ -57,6 +60,7 @@ final class Project {
         author: String = "",
         summary: String = "",
         storagePath: String,
+        bookOutline: String = "",
         targetWordCount: Int = 50000,
         dailyWordGoal: Int = 2000
     ) {
@@ -65,6 +69,7 @@ final class Project {
         self.author = author
         self.summary = summary
         self.storagePath = storagePath
+        self.bookOutline = bookOutline
         self.createdAt = Date()
         self.updatedAt = Date()
         self.targetWordCount = targetWordCount

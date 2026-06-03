@@ -113,38 +113,51 @@ struct ContentView: View {
 
         do {
             let container = try ModelContainer(for: schema, configurations: config)
-            let context = container.mainContext
-
-            let descriptor = FetchDescriptor<Project>()
-            let dbProjects = try context.fetch(descriptor)
-
-            if let project = dbProjects.first {
-                // 同步注册表中的最新元数据到数据库
-                syncMetaToProject(meta: meta, project: project, context: context)
-                self.projectContainer = container
-                self.currentProject = project
-                PluginManager.shared.context.updateProject(project, container: container)
-            } else {
-                // 数据库中不存在 Project 记录（异常情况），新建一个
-                // 使用注册表中的 UUID，避免数据库与注册表 ID 不一致
-                let newProject = Project(
-                    title: meta.title,
-                    author: meta.author,
-                    summary: meta.summary,
-                    storagePath: meta.storagePath,
-                    targetWordCount: meta.targetWordCount,
-                    dailyWordGoal: meta.dailyWordGoal
-                )
-                newProject.id = meta.id
-                context.insert(newProject)
-                try context.save()
-                self.projectContainer = container
-                self.currentProject = newProject
-                PluginManager.shared.context.updateProject(newProject, container: container)
-            }
+            try setupProject(from: container, meta: meta)
         } catch {
-            print("打开项目失败: \(error)")
-            selectedProjectID = nil
+            print("打开项目失败，尝试重建数据库: \(error)")
+            // Schema 不兼容时删除旧数据库并重建
+            do {
+                if FileManager.default.fileExists(atPath: dbURL.path) {
+                    try FileManager.default.removeItem(at: dbURL)
+                }
+                let container = try ModelContainer(for: schema, configurations: config)
+                try setupProject(from: container, meta: meta)
+            } catch {
+                print("重建数据库失败: \(error)")
+                selectedProjectID = nil
+            }
+        }
+    }
+    
+    /// 从已打开的容器加载或创建 Project 记录。
+    private func setupProject(from container: ModelContainer, meta: ProjectMeta) throws {
+        let context = container.mainContext
+        let descriptor = FetchDescriptor<Project>()
+        let dbProjects = try context.fetch(descriptor)
+
+        if let project = dbProjects.first {
+            // 同步注册表中的最新元数据到数据库
+            syncMetaToProject(meta: meta, project: project, context: context)
+            self.projectContainer = container
+            self.currentProject = project
+            PluginManager.shared.context.updateProject(project, container: container)
+        } else {
+            // 数据库中不存在 Project 记录，新建一个
+            let newProject = Project(
+                title: meta.title,
+                author: meta.author,
+                summary: meta.summary,
+                storagePath: meta.storagePath,
+                targetWordCount: meta.targetWordCount,
+                dailyWordGoal: meta.dailyWordGoal
+            )
+            newProject.id = meta.id
+            context.insert(newProject)
+            try context.save()
+            self.projectContainer = container
+            self.currentProject = newProject
+            PluginManager.shared.context.updateProject(newProject, container: container)
         }
     }
 

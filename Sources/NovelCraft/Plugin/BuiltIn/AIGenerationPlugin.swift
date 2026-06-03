@@ -4,15 +4,16 @@ import SwiftData
 /// AI 生成插件。
 ///
 /// 通过策略模式支持多品牌切换，目前内置 DeepSeek 实现。
-/// 在编辑器工具栏提供「AI 生成」按钮，点击后在侧边栏打开生成面板。
+/// 在编辑器工具栏提供「AI 生成」按钮，点击后在右侧侧滑出生成面板。
 @MainActor
 final class AIGenerationPlugin: NovelCraftPlugin, EditorToolbarContributor, PluginConfigurable {
     let id = "com.novelcraft.plugins.aigeneration"
     let name = "AI 生成"
-    let description = "基于 DeepSeek 等大模型的 AI 写作辅助，支持续写、扩写、润色等功能。"
+    let description = "基于 DeepSeek 等大模型的 AI 写作辅助，支持续写、扩写等功能。"
     let version = "1.0.0"
     let author = "NovelCraft 官方"
     var isEnabled: Bool = true
+    var hasEditorToolbarButton: Bool { true }
     
     private weak var context: PluginContext?
     
@@ -125,9 +126,6 @@ struct AIGenerationConfigView: View {
                 SecureField("输入 API Key", text: $apiKey)
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: apiKey) { _, _ in saveConfig() }
-                    .onChange(of: apiKey) { _, _ in
-                        saveConfig()
-                    }
             }
             
             // 模型选择
@@ -138,9 +136,6 @@ struct AIGenerationConfigView: View {
                 TextField("模型名称", text: $selectedModel)
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: selectedModel) { _, _ in saveConfig() }
-                    .onChange(of: selectedModel) { _, _ in
-                        saveConfig()
-                    }
             }
             
             Spacer()
@@ -174,25 +169,24 @@ extension Notification.Name {
 // MARK: - 面板视图
 
 struct AIGenerationPanelView: View {
-    private let pluginID = "com.novelcraft.plugins.aigeneration"
+    @Environment(\.modelContext) private var modelContext
+    
+    let chapter: Chapter
+    
+    @State private var generationMode: GenerationMode = .continueWriting
+    @State private var generatedText: String = ""
+    @State private var isGenerating = false
+    @State private var errorMessage: String? = nil
+    @State private var showConfig = false
     
     @State private var apiKey: String = ""
     @State private var selectedStrategyID: String = "deepseek"
     @State private var selectedModel: String = "deepseek-chat"
     
-    @State private var prompt: String = ""
-    @State private var generatedText: String = ""
-    @State private var isGenerating = false
-    @State private var errorMessage: String? = nil
-    @State private var generationMode: GenerationMode = .continueWriting
-    @State private var showConfig = false
+    private let pluginID = "com.novelcraft.plugins.aigeneration"
     
     private var plugin: AIGenerationPlugin? {
         PluginManager.shared.plugins.first(where: { $0.id == pluginID }) as? AIGenerationPlugin
-    }
-    
-    private var context: PluginContext {
-        PluginManager.shared.context
     }
     
     var body: some View {
@@ -201,17 +195,21 @@ struct AIGenerationPanelView: View {
             Divider()
             ScrollView {
                 VStack(spacing: 16) {
-                    configSection
+                    synopsisSection
+                    
+                    Divider()
+                    
                     modeSection
-                    promptSection
+                    
                     actionSection
+                    
                     resultSection
                 }
                 .padding()
             }
         }
         #if os(macOS)
-        .frame(minWidth: 400, minHeight: 500)
+        .frame(minWidth: 300, minHeight: 500)
         #endif
         .onAppear {
             loadConfig()
@@ -232,7 +230,7 @@ struct AIGenerationPanelView: View {
                     showConfig.toggle()
                 }
             } label: {
-                Image(systemName: showConfig ? "gear" : "gear")
+                Image(systemName: "gear")
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
@@ -242,70 +240,27 @@ struct AIGenerationPanelView: View {
         .background(.ultraThinMaterial)
     }
     
-    private var configSection: some View {
+    private var synopsisSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if showConfig {
-                Text("配置")
+            HStack(spacing: 6) {
+                Image(systemName: "doc.text")
+                    .foregroundStyle(Color.accentColor)
+                Text("章节细纲")
                     .font(.subheadline)
                     .fontWeight(.semibold)
-                
-                // 品牌选择
-                HStack {
-                    Text("品牌")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 50, alignment: .leading)
-                    Picker("", selection: $selectedStrategyID) {
-                        ForEach(plugin?.strategies ?? [], id: \.id) { strategy in
-                            Text(strategy.displayName).tag(strategy.id)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .onChange(of: selectedStrategyID) { _, newID in
-                        if let strategy = plugin?.strategies.first(where: { $0.id == newID }) {
-                            selectedModel = strategy.defaultModel
-                        }
-                    }
-                }
-                
-                // API Key
-                HStack {
-                    Text("API Key")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 50, alignment: .leading)
-                    SecureField("输入 API Key", text: $apiKey)
-                        .textFieldStyle(.roundedBorder)
-                }
-                
-                // 模型选择
-                HStack {
-                    Text("模型")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 50, alignment: .leading)
-                    TextField("模型名称", text: $selectedModel)
-                        .textFieldStyle(.roundedBorder)
-                }
+                Spacer()
+            }
+            
+            if chapter.synopsis.isEmpty {
+                Text("暂无细纲，可在章节属性中添加。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                HStack {
-                    Text("品牌: \(plugin?.strategies.first(where: { $0.id == selectedStrategyID })?.displayName ?? selectedStrategyID)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("模型: \(selectedModel)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if apiKey.isEmpty {
-                    Text("⚠️ 尚未配置 API Key，点击右上角 ⚙️ 进行配置")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                } else {
-                    Text("API Key: \(String(repeating: "•", count: min(apiKey.count, 12)))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(chapter.synopsis)
+                    .font(.system(size: 13))
+                    .lineSpacing(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -317,35 +272,24 @@ struct AIGenerationPanelView: View {
                 .fontWeight(.semibold)
             
             Picker("", selection: $generationMode) {
-                ForEach(GenerationMode.allCases) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
+                Text("续写").tag(GenerationMode.continueWriting)
+                Text("扩写").tag(GenerationMode.expand)
             }
             .pickerStyle(.segmented)
-        }
-    }
-    
-    private var promptSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("提示词")
-                .font(.subheadline)
-                .fontWeight(.semibold)
             
-            TextEditor(text: $prompt)
-                .font(.system(size: 14))
-                .frame(minHeight: 80)
-                .padding(4)
-                .background(Color.secondary.opacity(0.06))
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                )
+            Text(generationMode.description)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
     
     private var actionSection: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
+            if showConfig {
+                configSection
+            }
+            
             if let error = errorMessage {
                 Text(error)
                     .font(.caption)
@@ -353,23 +297,64 @@ struct AIGenerationPanelView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             
-            HStack(spacing: 12) {
-                Button {
-                    fillPromptFromContext()
-                } label: {
-                    Label("读取上下文", systemImage: "doc.text")
+            Button {
+                Task { await generate() }
+            } label: {
+                Label(isGenerating ? "生成中…" : "开始生成", systemImage: "sparkles")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(apiKey.isEmpty || isGenerating)
+            
+            if apiKey.isEmpty {
+                Text("⚠️ 尚未配置 API Key，点击右上角 ⚙️ 进行配置")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+    
+    private var configSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("配置")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            
+            HStack {
+                Text("品牌")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .leading)
+                Picker("", selection: $selectedStrategyID) {
+                    ForEach(plugin?.strategies ?? [], id: \.id) { strategy in
+                        Text(strategy.displayName).tag(strategy.id)
+                    }
                 }
-                .buttonStyle(.bordered)
-                
-                Spacer()
-                
-                Button {
-                    Task { await generate() }
-                } label: {
-                    Label(isGenerating ? "生成中…" : "开始生成", systemImage: "sparkles")
+                .pickerStyle(.segmented)
+                .onChange(of: selectedStrategyID) { _, newID in
+                    if let strategy = plugin?.strategies.first(where: { $0.id == newID }) {
+                        selectedModel = strategy.defaultModel
+                    }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(apiKey.isEmpty || prompt.isEmpty || isGenerating)
+            }
+            
+            HStack {
+                Text("API Key")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .leading)
+                SecureField("输入 API Key", text: $apiKey)
+                    .textFieldStyle(.roundedBorder)
+            }
+            
+            HStack {
+                Text("模型")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 50, alignment: .leading)
+                TextField("模型名称", text: $selectedModel)
+                    .textFieldStyle(.roundedBorder)
             }
         }
     }
@@ -381,16 +366,20 @@ struct AIGenerationPanelView: View {
                     .font(.subheadline)
                     .fontWeight(.semibold)
                 
-                TextEditor(text: $generatedText)
-                    .font(.system(size: 14))
-                    .frame(minHeight: 120)
-                    .padding(4)
-                    .background(Color.secondary.opacity(0.06))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
+                ScrollView {
+                    Text(generatedText)
+                        .font(.system(size: 13))
+                        .lineSpacing(4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(minHeight: 120, maxHeight: 300)
+                .background(Color.secondary.opacity(0.06))
+                .cornerRadius(8)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                )
                 
                 HStack(spacing: 12) {
                     Button {
@@ -425,13 +414,18 @@ struct AIGenerationPanelView: View {
         PluginConfigStore.set(selectedModel, pluginID: pluginID, key: "model")
     }
     
-    private func fillPromptFromContext() {
-        guard let chapter = context.selectedChapter else {
-            prompt = ""
-            return
-        }
-        let prefix = generationMode.systemPrompt
-        prompt = "\(prefix)\n\n当前章节内容：\n\(chapter.content)\n\n请根据以上内容进行生成。"
+    private func buildPrompt() -> String {
+        let modePrompt = generationMode.systemPrompt
+        let synopsisText = chapter.synopsis.isEmpty ? "（无细纲）" : chapter.synopsis
+        return """
+        \(modePrompt)
+        
+        章节标题：\(chapter.title)
+        章节细纲：\(synopsisText)
+        
+        当前章节内容：
+        \(chapter.content)
+        """
     }
     
     private func generate() async {
@@ -440,10 +434,8 @@ struct AIGenerationPanelView: View {
             errorMessage = "请先填写 API Key"
             return
         }
-        guard !prompt.isEmpty else {
-            errorMessage = "提示词不能为空"
-            return
-        }
+        
+        let prompt = buildPrompt()
         
         isGenerating = true
         errorMessage = nil
@@ -467,12 +459,9 @@ struct AIGenerationPanelView: View {
     }
     
     private func insertIntoChapter(_ text: String) {
-        guard let chapter = context.selectedChapter else {
-            errorMessage = "未选中章节"
-            return
-        }
         chapter.content += "\n\(text)\n"
-        context.save()
+        chapter.updatedAt = Date()
+        try? modelContext.save()
     }
     
     private func copyToClipboard(_ text: String) {
@@ -503,6 +492,21 @@ enum GenerationMode: String, CaseIterable, Identifiable {
         case .polish: return "润色"
         case .rewrite: return "改写"
         case .custom: return "自定义"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .continueWriting:
+            return "根据当前章节内容与细纲，继续写出后续情节，保持原有文风与设定。"
+        case .expand:
+            return "对当前片段进行扩写，增加细节描写、心理活动与环境渲染，让内容更丰满。"
+        case .polish:
+            return "优化语句表达，提升文学性，同时保持原意不变。"
+        case .rewrite:
+            return "以不同角度或风格重新表达，保留核心情节但改变叙述方式。"
+        case .custom:
+            return "根据自定义提示词进行生成。"
         }
     }
     

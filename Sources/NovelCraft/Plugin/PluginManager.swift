@@ -97,10 +97,11 @@ final class PluginManager: ObservableObject {
     
     // MARK: 扩展点查询
     
-    /// 获取所有已启用插件贡献的工具栏按钮。
+    /// 获取所有已启用且声明有编辑区按钮的插件贡献的工具栏按钮。
     var allToolbarItems: [PluginToolbarItem] {
         toolbarContributors
             .filter(\.isEnabled)
+            .filter(\.hasEditorToolbarButton)
             .flatMap(\.toolbarItems)
     }
     

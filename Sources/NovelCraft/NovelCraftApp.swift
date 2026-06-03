@@ -103,7 +103,8 @@ struct PluginQuickActionsSection: View {
                 .disabled(true)
         } else {
             ForEach(Array(enabledPlugins.enumerated()), id: \.offset) { _, plugin in
-                if let contributor = plugin as? any EditorToolbarContributor,
+                if plugin.hasEditorToolbarButton,
+                   let contributor = plugin as? any EditorToolbarContributor,
                    let firstItem = contributor.toolbarItems.first {
                     Button(firstItem.tooltip) {
                         firstItem.action()

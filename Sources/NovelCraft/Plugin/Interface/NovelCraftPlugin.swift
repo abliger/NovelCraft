@@ -125,6 +125,8 @@ protocol NovelCraftPlugin: AnyObject, Identifiable {
     var author: String { get }
     /// 是否启用。PluginManager 仅对启用状态的插件分发事件。
     var isEnabled: Bool { get set }
+    /// 该插件是否在编辑器工具栏显示按钮。
+    var hasEditorToolbarButton: Bool { get }
     
     /// 插件被加载时调用。可在此进行一次性初始化。
     /// - Parameter context: 插件上下文，提供项目数据、数据库访问等内部 API。
@@ -132,6 +134,11 @@ protocol NovelCraftPlugin: AnyObject, Identifiable {
     
     /// 插件被卸载或应用退出时调用。可在此释放资源、移除监听。
     func teardown()
+}
+
+extension NovelCraftPlugin {
+    /// 默认不在编辑器工具栏显示按钮。
+    var hasEditorToolbarButton: Bool { false }
 }
 
 // MARK: - 插件上下文（内部 API，不对外暴露）
@@ -202,6 +209,14 @@ final class PluginContext: ObservableObject {
 
 // MARK: - 插件 UI / 动作定义
 
+/// 工具栏按钮在编辑器中的位置。
+enum PluginToolbarPosition {
+    /// 编辑器内置按钮之前
+    case leading
+    /// 编辑器内置按钮之后
+    case trailing
+}
+
 /// 插件工具栏按钮定义。
 struct PluginToolbarItem {
     /// 唯一标识
@@ -210,8 +225,18 @@ struct PluginToolbarItem {
     let icon: String
     /// 悬停提示
     let tooltip: String
+    /// 在编辑器工具栏中的位置
+    let position: PluginToolbarPosition
     /// 点击执行的动作
     let action: @MainActor () -> Void
+    
+    init(id: String, icon: String, tooltip: String, position: PluginToolbarPosition = .trailing, action: @escaping @MainActor () -> Void) {
+        self.id = id
+        self.icon = icon
+        self.tooltip = tooltip
+        self.position = position
+        self.action = action
+    }
 }
 
 /// 插件导出格式定义。

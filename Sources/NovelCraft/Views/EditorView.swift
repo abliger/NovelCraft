@@ -42,6 +42,8 @@ struct EditorView: View {
     @State private var showImageInsert = false
     /// 是否显示 AI 生成面板
     @State private var showAIGeneration = false
+    /// 是否显示细纲编辑面板
+    @State private var showSynopsisPanel = false
     /// 图片处理方式（从设置读取）
     @AppStorage("imageHandlingMode") private var imageHandlingMode = 1
     /// 是否允许下载网络图片
@@ -106,6 +108,20 @@ struct EditorView: View {
                     )
                     .frame(width: 260)
                 }
+                
+                // AI 生成侧边栏
+                if showAIGeneration {
+                    Divider()
+                    AIGenerationPanelView(chapter: chapter)
+                        .frame(minWidth: 300, idealWidth: 320, maxWidth: 380)
+                }
+                
+                // 细纲编辑侧边栏
+                if showSynopsisPanel {
+                    Divider()
+                    SynopsisPanelView(chapter: chapter, project: project)
+                        .frame(minWidth: 280, idealWidth: 300, maxWidth: 360)
+                }
             }
             
             Divider()
@@ -114,6 +130,7 @@ struct EditorView: View {
         }
         .onAppear {
             editorText = chapter.content
+            loadSynopsisFromDisk()
             updatePreview()
             loadForwardRefs()
             toolbarItems = PluginManager.shared.allToolbarItems
@@ -124,8 +141,15 @@ struct EditorView: View {
         }
         .onChange(of: chapter.id) { _, _ in
             editorText = chapter.content
+            loadSynopsisFromDisk()
             updatePreview()
             loadForwardRefs()
+        }
+        .onChange(of: chapter.content) { _, newValue in
+            if newValue != editorText {
+                editorText = newValue
+                updatePreview()
+            }
         }
         .onChange(of: editorText) { _, newValue in
             chapter.content = newValue
@@ -139,6 +163,7 @@ struct EditorView: View {
                 try? await Task.sleep(for: .seconds(10))
                 guard !Task.isCancelled else { return }
                 FileSyncEngine.syncChapterToDisk(chapter, project: project)
+                FileSyncEngine.syncSynopsisToDisk(chapter, project: project)
             }
         }
         .sheet(isPresented: $showBlockSearch) {
@@ -151,11 +176,10 @@ struct EditorView: View {
                 insertImageMarkdown(markdown)
             }
         }
-        .sheet(isPresented: $showAIGeneration) {
-            AIGenerationPanelView()
-        }
         .onReceive(NotificationCenter.default.publisher(for: .aiGenerationPanelToggle)) { _ in
-            showAIGeneration = true
+            withAnimation {
+                showAIGeneration.toggle()
+            }
         }
         #if os(macOS)
         .dropDestination(for: URL.self) { urls, location in
@@ -199,6 +223,14 @@ struct EditorView: View {
     /// 加载当前章节的正向引用
     private func loadForwardRefs() {
         forwardRefs = BlockRefEngine.forwardRefs(from: chapter.id, context: modelContext)
+    }
+    
+    /// 从文件系统加载当前章节的细纲，若存在则覆盖内存中的值
+    private func loadSynopsisFromDisk() {
+        if let synopsis = FileSyncEngine.loadSynopsisFromDisk(chapter, project: project) {
+            chapter.synopsis = synopsis
+            try? modelContext.save()
+        }
     }
     
     /// 在文本末尾插入块引用或嵌入语法
@@ -256,11 +288,30 @@ struct EditorView: View {
         }
     }
     
-    /// 插件贡献的工具栏按钮区域。
+    /// 插件贡献的工具栏按钮（前置位置）。
     @ViewBuilder
-    private var pluginToolbarItems: some View {
-        if !toolbarItems.isEmpty {
-            ForEach(toolbarItems, id: \.id) { item in
+    private var pluginToolbarLeadingItems: some View {
+        let items = toolbarItems.filter { $0.position == .leading }
+        if !items.isEmpty {
+            ForEach(items, id: \.id) { item in
+                Button {
+                    item.action()
+                } label: {
+                    Image(systemName: item.icon)
+                }
+                .help(item.tooltip)
+            }
+            Divider()
+                .frame(height: 20)
+        }
+    }
+    
+    /// 插件贡献的工具栏按钮（后置位置）。
+    @ViewBuilder
+    private var pluginToolbarTrailingItems: some View {
+        let items = toolbarItems.filter { $0.position == .trailing }
+        if !items.isEmpty {
+            ForEach(items, id: \.id) { item in
                 Button {
                     item.action()
                 } label: {
@@ -277,7 +328,7 @@ struct EditorView: View {
     private var editorToolbar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 8) {
-                pluginToolbarItems
+                pluginToolbarLeadingItems
                 Button {
                     applyMarkdown(prefix: "# ")
                 } label: {
@@ -352,7 +403,18 @@ struct EditorView: View {
                 }
                 .help("反向链接面板")
                 
-                pluginToolbarItems
+                // 细纲编辑面板开关
+                Button {
+                    withAnimation {
+                        showSynopsisPanel.toggle()
+                    }
+                } label: {
+                    Image(systemName: showSynopsisPanel ? "doc.text.fill" : "doc.text")
+                        .foregroundStyle(showSynopsisPanel ? Color.accentColor : .primary)
+                }
+                .help("编辑细纲")
+                
+                pluginToolbarTrailingItems
                 
                 if !forwardRefs.isEmpty {
                     Text("\(forwardRefs.count)")
@@ -505,5 +567,82 @@ struct EditorView: View {
     private func replaceAll() {
         guard !findText.isEmpty else { return }
         editorText = editorText.replacingOccurrences(of: findText, with: replaceText)
+    }
+}
+
+// MARK: - 细纲编辑面板
+
+/// 章节细纲编辑侧边栏，允许用户为当前章节编写或修改细纲。
+/// 细纲会同步写入文件系统（`章名_UUID前缀.synopsis.md`），并在加载时优先从文件读取。
+struct SynopsisPanelView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var chapter: Chapter
+    let project: Project
+    
+    @State private var synopsisText: String = ""
+    @FocusState private var isFocused: Bool
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // 面板标题
+            HStack {
+                Image(systemName: "doc.text")
+                    .foregroundStyle(Color.accentColor)
+                Text("章节细纲")
+                    .font(.headline)
+                Spacer()
+            }
+            .padding()
+            .background(.ultraThinMaterial)
+            
+            Divider()
+            
+            // 编辑区
+            VStack(alignment: .leading, spacing: 8) {
+                Text("为「\(chapter.title)」编写细纲")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+                    .padding(.top, 12)
+                
+                TextEditor(text: $synopsisText)
+                    .font(.system(size: 14))
+                    .lineSpacing(6)
+                    .padding(8)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.secondary.opacity(0.06))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                    )
+                    .padding(.horizontal)
+                    .focused($isFocused)
+                    .onChange(of: synopsisText) { _, newValue in
+                        chapter.synopsis = newValue
+                        chapter.updatedAt = Date()
+                        try? modelContext.save()
+                        FileSyncEngine.syncSynopsisToDisk(chapter, project: project)
+                    }
+                
+                if chapter.synopsis.isEmpty {
+                    Text("编写细纲有助于 AI 生成更贴合情节的内容。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                }
+                
+                Spacer()
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 280, minHeight: 400)
+        #endif
+        .onAppear {
+            synopsisText = chapter.synopsis
+        }
+        .onChange(of: chapter.id) { _, _ in
+            synopsisText = chapter.synopsis
+        }
     }
 }

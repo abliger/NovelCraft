@@ -321,7 +321,7 @@ struct PluginManagementRow: View {
     
     private var capabilityBadges: [(icon: String, title: String)] {
         var badges: [(String, String)] = []
-        if plugin is any EditorToolbarContributor {
+        if plugin.hasEditorToolbarButton {
             badges.append(("rectangle.and.pencil.and.ellipsis", "工具栏"))
         }
         if plugin is any ExportFormatContributor {
@@ -422,7 +422,7 @@ struct PluginDetailSheet: View {
     
     private var capabilityList: [(icon: String, name: String)] {
         var list: [(String, String)] = []
-        if plugin is any EditorToolbarContributor {
+        if plugin.hasEditorToolbarButton {
             list.append(("rectangle.and.pencil.and.ellipsis", "编辑器工具栏扩展"))
         }
         if plugin is any ExportFormatContributor {
