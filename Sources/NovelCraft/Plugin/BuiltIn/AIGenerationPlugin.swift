@@ -178,6 +178,10 @@ struct AIGenerationPanelView: View {
     @State private var isGenerating = false
     @State private var errorMessage: String? = nil
     @State private var showConfig = false
+    @State private var showPromptPreview = false
+    @State private var promptPreviewText: String = ""
+    @State private var showRuleEditor = false
+    @State private var ruleText: String = ""
     
     @State private var apiKey: String = ""
     @State private var selectedStrategyID: String = "deepseek"
@@ -199,9 +203,17 @@ struct AIGenerationPanelView: View {
                     
                     Divider()
                     
+                    ruleSection
+                    
+                    Divider()
+                    
                     modeSection
                     
                     actionSection
+                    
+                    if showPromptPreview {
+                        promptPreviewSection
+                    }
                     
                     resultSection
                 }
@@ -213,6 +225,7 @@ struct AIGenerationPanelView: View {
         #endif
         .onAppear {
             loadConfig()
+            loadRuleFromDisk()
         }
     }
     
@@ -265,6 +278,62 @@ struct AIGenerationPanelView: View {
         }
     }
     
+    private var ruleSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.plaintext")
+                    .foregroundStyle(Color.accentColor)
+                Text("写作规范")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button {
+                    withAnimation {
+                        showRuleEditor.toggle()
+                    }
+                } label: {
+                    Image(systemName: showRuleEditor ? "chevron.up" : "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(showRuleEditor ? "收起" : "展开编辑")
+            }
+            
+            if showRuleEditor {
+                TextEditor(text: $ruleText)
+                    .font(.system(size: 13))
+                    .lineSpacing(4)
+                    .frame(minHeight: 80)
+                    .padding(6)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.secondary.opacity(0.06))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                    )
+                    .onChange(of: ruleText) { _, newValue in
+                        saveRuleToDisk(newValue)
+                    }
+            } else {
+                if ruleText.isEmpty {
+                    Text("暂无写作规范，展开后可编辑 rule.md。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(ruleText)
+                        .font(.system(size: 12))
+                        .lineSpacing(3)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+    
     private var modeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("生成模式")
@@ -297,14 +366,27 @@ struct AIGenerationPanelView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             
-            Button {
-                Task { await generate() }
-            } label: {
-                Label(isGenerating ? "生成中…" : "开始生成", systemImage: "sparkles")
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 12) {
+                Button {
+                    promptPreviewText = buildPrompt(includeContent: false)
+                    withAnimation {
+                        showPromptPreview.toggle()
+                    }
+                } label: {
+                    Label(showPromptPreview ? "收起提示词" : "查看提示词", systemImage: "doc.text.magnifyingglass")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                
+                Button {
+                    Task { await generate() }
+                } label: {
+                    Label(isGenerating ? "生成中…" : "开始生成", systemImage: "sparkles")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(apiKey.isEmpty || isGenerating)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(apiKey.isEmpty || isGenerating)
             
             if apiKey.isEmpty {
                 Text("⚠️ 尚未配置 API Key，点击右上角 ⚙️ 进行配置")
@@ -356,6 +438,40 @@ struct AIGenerationPanelView: View {
                 TextField("模型名称", text: $selectedModel)
                     .textFieldStyle(.roundedBorder)
             }
+        }
+    }
+    
+    private var promptPreviewSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("提示词预览（开发人员测试）")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button {
+                    copyToClipboard(promptPreviewText)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .help("复制提示词")
+            }
+            
+            ScrollView {
+                Text(promptPreviewText)
+                    .font(.system(size: 12, design: .monospaced))
+                    .lineSpacing(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+            }
+            .frame(minHeight: 120, maxHeight: 400)
+            .background(Color.secondary.opacity(0.06))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+            )
         }
     }
     
@@ -414,18 +530,140 @@ struct AIGenerationPanelView: View {
         PluginConfigStore.set(selectedModel, pluginID: pluginID, key: "model")
     }
     
-    private func buildPrompt() -> String {
+    private func loadRuleFromDisk() {
+        guard let project = chapter.volume?.project else { return }
+        ruleText = FileSyncEngine.loadRuleFromDisk(project: project) ?? ""
+    }
+    
+    private func saveRuleToDisk(_ text: String) {
+        guard let project = chapter.volume?.project else { return }
+        FileSyncEngine.syncRuleToDisk(text, project: project)
+    }
+    
+    private func buildPrompt(includeContent: Bool = true) -> String {
         let modePrompt = generationMode.systemPrompt
+        let project = chapter.volume?.project
+        let agentContext = buildAgentContext(project: project)
+        
         let synopsisText = chapter.synopsis.isEmpty ? "（无细纲）" : chapter.synopsis
+        let currentVolumeTitle = chapter.volume?.title ?? "未命名卷"
+        let contentText = includeContent ? chapter.content : "（章节内容已省略，实际发送时包含完整内容）"
+        
+        let ruleSection = ruleText.isEmpty ? "" : """
+        
+        ## 写作规范
+        \(ruleText)
+        """
+        
         return """
+        \(agentContext)
+        
+        ---
+        \(ruleSection)
+        
         \(modePrompt)
         
-        章节标题：\(chapter.title)
-        章节细纲：\(synopsisText)
+        当前卷：\(currentVolumeTitle)
+        当前章节标题：\(chapter.title)
+        本章细纲：\(synopsisText)
         
-        当前章节内容：
-        \(chapter.content)
+        当前章节已写内容：
+        \(contentText)
         """
+    }
+    
+    private func buildAgentContext(project: Project?) -> String {
+        guard let project = project else { return "" }
+        
+        var sections: [String] = []
+        
+        sections.append("""
+        # 小说创作助手指令
+        
+        你是一位专业中文小说创作助手，正在为作品《\(project.title)》进行写作。
+        作者：\(project.author.isEmpty ? "匿名" : project.author)
+        """)
+        
+        if !project.summary.isEmpty {
+            sections.append("作品简介：\(project.summary)")
+        }
+        
+        if !project.bookOutline.isEmpty {
+            sections.append("""
+            
+            ## 整书大纲
+            \(project.bookOutline)
+            """)
+        }
+        
+        if let volume = chapter.volume,
+           let volumeOutline = findVolumeOutline(for: volume, in: project) {
+            sections.append("""
+            
+            ## 本卷大纲：\(volumeOutline.title)
+            \(volumeOutline.content.isEmpty ? "（无卷级概述）" : volumeOutline.content)
+            """)
+            
+            let detailNodes = volumeOutline.children.sorted { $0.order < $1.order }
+            if !detailNodes.isEmpty {
+                var detailText = "\n### 本卷细纲\n"
+                for node in detailNodes {
+                    detailText += "- \(node.title)"
+                    if !node.content.isEmpty {
+                        detailText += "：\(node.content)"
+                    }
+                    detailText += "\n"
+                }
+                sections.append(detailText)
+            }
+        }
+        
+        let characters = project.characters.sorted { $0.order < $1.order }
+        if !characters.isEmpty {
+            var charText = "\n## 角色设定\n"
+            for char in characters.prefix(8) {
+                charText += "\n### \(char.name)"
+                if !char.aliases.isEmpty { charText += "（\(char.aliases)）" }
+                charText += "\n"
+                if !char.gender.isEmpty { charText += "- 性别：\(char.gender)\n" }
+                if !char.age.isEmpty { charText += "- 年龄：\(char.age)\n" }
+                if !char.appearance.isEmpty { charText += "- 外貌：\(char.appearance)\n" }
+                if !char.personality.isEmpty { charText += "- 性格：\(char.personality)\n" }
+                if !char.background.isEmpty { charText += "- 背景：\(char.background)\n" }
+                if !char.goals.isEmpty { charText += "- 目标：\(char.goals)\n" }
+                if !char.fate.isEmpty { charText += "- 命运：\(char.fate)\n" }
+                if !char.relationships.isEmpty { charText += "- 关系：\(char.relationships)\n" }
+            }
+            sections.append(charText)
+        }
+        
+        let worldSettings = project.worldSettings.sorted { $0.order < $1.order }
+        if !worldSettings.isEmpty {
+            var settingText = "\n## 世界观设定\n"
+            for setting in worldSettings.prefix(10) {
+                settingText += "\n### \(setting.title)（\(setting.category)）\n\(setting.content)\n"
+            }
+            sections.append(settingText)
+        }
+        
+        return sections.joined(separator: "\n")
+    }
+    
+    private func findVolumeOutline(for volume: Volume, in project: Project) -> OutlineNode? {
+        let sortedVolumes = project.volumes.sorted { $0.order < $1.order }
+        guard let volumeIndex = sortedVolumes.firstIndex(where: { $0.id == volume.id }) else {
+            return nil
+        }
+        
+        let volumeOutlines = project.outlineNodes
+            .filter { $0.parent == nil }
+            .sorted { $0.order < $1.order }
+        
+        if volumeIndex < volumeOutlines.count {
+            return volumeOutlines[volumeIndex]
+        }
+        
+        return volumeOutlines.first { $0.title == volume.title }
     }
     
     private func generate() async {

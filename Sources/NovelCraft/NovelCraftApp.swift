@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import CoreData
+import UserNotifications
 
 /// 应用全局通知名称。
 extension Notification.Name {
@@ -16,9 +17,22 @@ struct NovelCraftApp: App {
     init() {
         setupAutoTimestamps()
         PluginManager.shared.registerBuiltInPlugins()
+        requestNotificationAuthorization()
         #if os(macOS)
         _ = MenuBarController.shared
         #endif
+    }
+    
+    /// 请求系统通知权限。
+    private func requestNotificationAuthorization() {
+        UNUserNotificationCenter.current().delegate = NovelCraftNotificationDelegate.shared
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("通知权限请求失败: \(error.localizedDescription)")
+            } else if !granted {
+                print("用户拒绝了通知权限")
+            }
+        }
     }
     
     var body: some Scene {
@@ -56,6 +70,25 @@ struct NovelCraftApp: App {
             }
         }
         notificationTokens.append(token)
+    }
+}
+
+// MARK: - 通知代理
+
+/// 系统通知代理，确保应用在前台时也能正常显示通知。
+class NovelCraftNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NovelCraftNotificationDelegate()
+    
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        #if os(macOS)
+        completionHandler([.banner, .sound])
+        #else
+        completionHandler([.banner, .sound, .badge])
+        #endif
     }
 }
 

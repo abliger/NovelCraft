@@ -81,7 +81,9 @@ final class RepeatedWordCheckPlugin: NovelCraftPlugin, ContentProcessor, Chapter
                 guard let range = Range(match.range, in: cleaned) else { continue }
                 let chineseText = String(cleaned[range])
                 // 提取 2-4 字词组
-                for length in minLength...min(4, chineseText.count) {
+                let maxLength = min(4, chineseText.count)
+                guard maxLength >= minLength else { continue }
+                for length in minLength...maxLength {
                     for i in 0...(chineseText.count - length) {
                         let start = chineseText.index(chineseText.startIndex, offsetBy: i)
                         let end = chineseText.index(start, offsetBy: length)

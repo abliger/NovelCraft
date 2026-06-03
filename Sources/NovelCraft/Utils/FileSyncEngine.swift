@@ -42,6 +42,29 @@ struct FileSyncEngine {
         return try? String(contentsOf: fileURL, encoding: .utf8)
     }
     
+    /// 将 AI 生成规则文件同步到项目根目录。
+    /// 路径结构为：storagePath/rule.md
+    static func syncRuleToDisk(_ text: String, project: Project) {
+        let storagePath = project.storagePath
+        guard validatePath(storagePath) else { return }
+        let fileURL = URL(fileURLWithPath: storagePath).appendingPathComponent("rule.md")
+        do {
+            try text.write(to: fileURL, atomically: true, encoding: .utf8)
+        } catch {
+            print("规则文件同步失败: \(error)")
+        }
+    }
+    
+    /// 从文件系统加载 AI 生成规则文件。
+    /// 若文件不存在，返回 nil。
+    static func loadRuleFromDisk(project: Project) -> String? {
+        let storagePath = project.storagePath
+        guard validatePath(storagePath) else { return nil }
+        let fileURL = URL(fileURLWithPath: storagePath).appendingPathComponent("rule.md")
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        return try? String(contentsOf: fileURL, encoding: .utf8)
+    }
+    
     // MARK: - 路径计算
     
     /// 计算章节正文文件的 URL。
@@ -60,21 +83,24 @@ struct FileSyncEngine {
     
     // MARK: - 私有辅助方法
     
-    private static func volumeURL(chapter: Chapter, project: Project) -> URL? {
-        let storagePath = project.storagePath
-        
-        // 验证路径安全性
+    private static func validatePath(_ storagePath: String) -> Bool {
         let url = URL(fileURLWithPath: storagePath)
         let resolved = url.resolvingSymlinksInPath().standardizedFileURL.path
         let pathComponents = resolved.split(separator: "/")
         if pathComponents.contains("..") || resolved.contains("/../") || resolved.hasSuffix("/..") || resolved == ".." {
             print("文件同步失败: 路径包含非法组件 \(storagePath)")
-            return nil
+            return false
         }
         if !resolved.hasPrefix("/") {
             print("文件同步失败: 路径必须是绝对路径 \(storagePath)")
-            return nil
+            return false
         }
+        return true
+    }
+    
+    private static func volumeURL(chapter: Chapter, project: Project) -> URL? {
+        let storagePath = project.storagePath
+        guard validatePath(storagePath) else { return nil }
         
         guard let volume = chapter.volume else { return nil }
         let sanitizedVolume = sanitizeFileName(volume.title)

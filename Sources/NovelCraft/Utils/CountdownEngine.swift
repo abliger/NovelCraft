@@ -171,19 +171,20 @@ final class CountdownEngine: ObservableObject {
     }
 
     private func tickAll() {
-        var anyFinished = false
+        var finishedNames: [String] = []
         for index in items.indices where items[index].isRunning {
             items[index].remainingSeconds -= 1
             if items[index].remainingSeconds <= 0 {
                 items[index].remainingSeconds = 0
                 items[index].state = .finished
-                anyFinished = true
+                finishedNames.append(items[index].name)
             }
         }
-        if anyFinished {
+        if !finishedNames.isEmpty {
             saveItems()
             playFinishSound()
             NotificationCenter.default.post(name: .countdownFinished, object: nil)
+            postSystemNotification(finishedNames: finishedNames)
         } else if items.contains(where: \.isRunning) {
             // 每隔 10 秒保存一次，避免过于频繁的磁盘写入
             let now = Date().timeIntervalSince1970
@@ -227,6 +228,17 @@ final class CountdownEngine: ObservableObject {
         #if os(macOS)
         NSSound.beep()
         #endif
+    }
+    
+    private func postSystemNotification(finishedNames: [String]) {
+        guard !finishedNames.isEmpty else { return }
+        let title = finishedNames.count == 1 ? "倒计时结束" : "\(finishedNames.count) 个倒计时结束"
+        let body = finishedNames.joined(separator: "、")
+        PluginManager.shared.context.sendNotification(
+            title: title,
+            body: body,
+            identifier: "countdown.finished.\(finishedNames.joined(separator: "."))"
+        )
     }
 }
 

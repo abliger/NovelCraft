@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 // MARK: - 插件能力标记协议（空协议，仅用于类型约束与组合）
 
@@ -204,6 +205,29 @@ final class PluginContext: ObservableObject {
     /// 保存数据库变更。
     func save() {
         try? modelContext?.save()
+    }
+    
+    // MARK: - 系统通知
+    
+    /// 发送系统本地通知（支持 macOS 与 iOS）。
+    /// 应用首次启动时会自动请求通知权限，未授权时此方法静默失败。
+    func sendNotification(title: String, subtitle: String? = nil, body: String? = nil, identifier: String? = nil) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        if let subtitle = subtitle { content.subtitle = subtitle }
+        if let body = body { content.body = body }
+        content.sound = .default
+        
+        let request = UNNotificationRequest(
+            identifier: identifier ?? UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("通知发送失败: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
