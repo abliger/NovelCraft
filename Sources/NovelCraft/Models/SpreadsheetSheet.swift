@@ -72,4 +72,32 @@ final class SpreadsheetSheet {
         }
         columnCount += 1
     }
+
+    /// 删除指定行及其所有单元格，并重新排列下方行的索引。
+    func deleteRow(at row: Int, context: ModelContext) {
+        guard row >= 0, row < rowCount else { return }
+        // 删除目标行的所有单元格
+        for cell in cells where cell.row == row {
+            context.delete(cell)
+        }
+        // 下方行索引上移
+        for cell in cells where cell.row > row {
+            cell.row -= 1
+        }
+        rowCount -= 1
+    }
+
+    /// 删除指定列及其所有单元格，并重新排列右侧列的索引。
+    func deleteColumn(at column: Int, context: ModelContext) {
+        guard column >= 0, column < columnCount else { return }
+        // 删除目标列的所有单元格
+        for cell in cells where cell.column == column {
+            context.delete(cell)
+        }
+        // 右侧列索引左移
+        for cell in cells where cell.column > column {
+            cell.column -= 1
+        }
+        columnCount -= 1
+    }
 }
