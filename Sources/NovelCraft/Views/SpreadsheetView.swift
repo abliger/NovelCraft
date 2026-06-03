@@ -31,6 +31,8 @@ struct SpreadsheetView: View {
     @State private var selectionEnd: (row: Int, col: Int)? = nil
     /// 是否正在拖动选择
     @State private var isDragging = false
+    /// 应用内部剪贴板，保存最近一次复制的 TSV 内容
+    @State private var clipboardTsv: String = ""
 
     #if os(macOS)
     @State private var keyMonitor: Any? = nil
@@ -381,10 +383,11 @@ struct SpreadsheetView: View {
     }
     #endif
 
-    /// 将当前选中区域序列化为 TSV 并写入剪贴板。
+    /// 将当前选中区域序列化为 TSV 并保存到应用内部剪贴板与系统剪贴板。
     private func copySelection() {
         guard selectionStart != nil, selectionEnd != nil else { return }
         let tsv = tsvFromSelection()
+        clipboardTsv = tsv
         #if os(macOS)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(tsv, forType: .string)
@@ -393,16 +396,10 @@ struct SpreadsheetView: View {
         #endif
     }
 
-    /// 从剪贴板读取 TSV 并粘贴到选中区域起始位置。
+    /// 使用应用内部剪贴板最近一次复制的内容进行粘贴，以选中区域起始位置展开。
     private func paste() {
-        let tsv: String?
-        #if os(macOS)
-        tsv = NSPasteboard.general.string(forType: .string)
-        #else
-        tsv = UIPasteboard.general.string
-        #endif
-        guard let tsv = tsv else { return }
-        applyTsvToSelection(tsv)
+        guard !clipboardTsv.isEmpty else { return }
+        applyTsvToSelection(clipboardTsv)
     }
 
     /// 将选中区域转为 TSV 字符串。
