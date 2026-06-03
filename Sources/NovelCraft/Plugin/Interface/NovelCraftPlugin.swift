@@ -42,6 +42,69 @@ protocol ChapterActionContributor: NovelCraftPlugin {
     var chapterActions: [PluginChapterAction] { get }
 }
 
+/// 标记该插件支持自定义配置。
+/// PluginSettingsView 会为实现了此协议的插件显示「配置」按钮，点击后弹出配置面板。
+@MainActor
+protocol PluginConfigurable: NovelCraftPlugin {
+    /// 配置面板视图。插件在此视图内管理自己的配置项。
+    var configurationView: AnyView { get }
+}
+
+// MARK: - 统一配置存储
+
+/// 插件统一配置存储，基于 UserDefaults，提供命名空间隔离。
+struct PluginConfigStore {
+    /// 生成带插件命名空间的 UserDefaults key。
+    private static func namespacedKey(pluginID: String, key: String) -> String {
+        "plugin.config.\(pluginID).\(key)"
+    }
+    
+    /// 读取字符串配置值。
+    static func string(pluginID: String, key: String) -> String? {
+        UserDefaults.standard.string(forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+    
+    /// 写入字符串配置值。
+    static func set(_ value: String, pluginID: String, key: String) {
+        UserDefaults.standard.set(value, forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+    
+    /// 删除指定配置项。
+    static func remove(pluginID: String, key: String) {
+        UserDefaults.standard.removeObject(forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+    
+    /// 读取布尔配置值。
+    static func bool(pluginID: String, key: String) -> Bool {
+        UserDefaults.standard.bool(forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+    
+    /// 写入布尔配置值。
+    static func set(_ value: Bool, pluginID: String, key: String) {
+        UserDefaults.standard.set(value, forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+    
+    /// 读取整数配置值。
+    static func integer(pluginID: String, key: String) -> Int {
+        UserDefaults.standard.integer(forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+    
+    /// 写入整数配置值。
+    static func set(_ value: Int, pluginID: String, key: String) {
+        UserDefaults.standard.set(value, forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+    
+    /// 读取双精度配置值。
+    static func double(pluginID: String, key: String) -> Double {
+        UserDefaults.standard.double(forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+    
+    /// 写入双精度配置值。
+    static func set(_ value: Double, pluginID: String, key: String) {
+        UserDefaults.standard.set(value, forKey: namespacedKey(pluginID: pluginID, key: key))
+    }
+}
+
 // MARK: - 核心插件协议
 
 /// NovelCraft 插件接口。所有插件（包括官方内置插件）必须实现此协议。

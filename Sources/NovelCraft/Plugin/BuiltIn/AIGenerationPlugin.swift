@@ -6,7 +6,7 @@ import SwiftData
 /// 通过策略模式支持多品牌切换，目前内置 DeepSeek 实现。
 /// 在编辑器工具栏提供「AI 生成」按钮，点击后在侧边栏打开生成面板。
 @MainActor
-final class AIGenerationPlugin: NovelCraftPlugin, EditorToolbarContributor {
+final class AIGenerationPlugin: NovelCraftPlugin, EditorToolbarContributor, PluginConfigurable {
     let id = "com.novelcraft.plugins.aigeneration"
     let name = "AI 生成"
     let description = "基于 DeepSeek 等大模型的 AI 写作辅助，支持续写、扩写、润色等功能。"
@@ -47,6 +47,29 @@ final class AIGenerationPlugin: NovelCraftPlugin, EditorToolbarContributor {
         ]
     }
     
+    // MARK: - PluginConfigurable
+    
+    var configurationView: AnyView {
+        AnyView(AIGenerationConfigView(pluginID: id))
+    }
+    
+    // MARK: - 配置读写便捷方法
+    
+    var apiKey: String {
+        get { PluginConfigStore.string(pluginID: id, key: "apiKey") ?? "" }
+        set { PluginConfigStore.set(newValue, pluginID: id, key: "apiKey") }
+    }
+    
+    var selectedStrategyID: String {
+        get { PluginConfigStore.string(pluginID: id, key: "strategy") ?? "deepseek" }
+        set { PluginConfigStore.set(newValue, pluginID: id, key: "strategy") }
+    }
+    
+    var selectedModel: String {
+        get { PluginConfigStore.string(pluginID: id, key: "model") ?? "deepseek-chat" }
+        set { PluginConfigStore.set(newValue, pluginID: id, key: "model") }
+    }
+    
     // MARK: - 生成逻辑
     
     func generateContent(prompt: String, strategyID: String, apiKey: String, model: String) async throws -> String {
@@ -54,6 +77,91 @@ final class AIGenerationPlugin: NovelCraftPlugin, EditorToolbarContributor {
             throw AIGenerationError.apiError("未找到策略: \(strategyID)")
         }
         return try await strategy.generate(apiKey: apiKey, prompt: prompt, model: model)
+    }
+}
+
+// MARK: - 配置面板视图
+
+struct AIGenerationConfigView: View {
+    let pluginID: String
+    
+    @State private var apiKey: String = ""
+    @State private var selectedStrategyID: String = "deepseek"
+    @State private var selectedModel: String = "deepseek-chat"
+    
+    private var plugin: AIGenerationPlugin? {
+        PluginManager.shared.plugins.first(where: { $0.id == pluginID }) as? AIGenerationPlugin
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("AI 生成配置")
+                .font(.headline)
+            
+            // 品牌选择
+            VStack(alignment: .leading, spacing: 6) {
+                Text("品牌")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Picker("", selection: $selectedStrategyID) {
+                    ForEach(plugin?.strategies ?? [], id: \.id) { strategy in
+                        Text(strategy.displayName).tag(strategy.id)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: selectedStrategyID) { _, newID in
+                    if let strategy = plugin?.strategies.first(where: { $0.id == newID }) {
+                        selectedModel = strategy.defaultModel
+                    }
+                    saveConfig()
+                }
+            }
+            
+            // API Key
+            VStack(alignment: .leading, spacing: 6) {
+                Text("API Key")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                SecureField("输入 API Key", text: $apiKey)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: apiKey) { _, _ in saveConfig() }
+                    .onChange(of: apiKey) { _, _ in
+                        saveConfig()
+                    }
+            }
+            
+            // 模型选择
+            VStack(alignment: .leading, spacing: 6) {
+                Text("模型")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("模型名称", text: $selectedModel)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: selectedModel) { _, _ in saveConfig() }
+                    .onChange(of: selectedModel) { _, _ in
+                        saveConfig()
+                    }
+            }
+            
+            Spacer()
+        }
+        .padding()
+        .frame(minWidth: 300, minHeight: 250)
+        .onAppear {
+            loadConfig()
+        }
+    }
+    
+    private func loadConfig() {
+        apiKey = PluginConfigStore.string(pluginID: pluginID, key: "apiKey") ?? ""
+        selectedStrategyID = PluginConfigStore.string(pluginID: pluginID, key: "strategy") ?? "deepseek"
+        selectedModel = PluginConfigStore.string(pluginID: pluginID, key: "model") ?? "deepseek-chat"
+    }
+    
+    private func saveConfig() {
+        PluginConfigStore.set(apiKey, pluginID: pluginID, key: "apiKey")
+        PluginConfigStore.set(selectedStrategyID, pluginID: pluginID, key: "strategy")
+        PluginConfigStore.set(selectedModel, pluginID: pluginID, key: "model")
     }
 }
 
@@ -66,9 +174,11 @@ extension Notification.Name {
 // MARK: - 面板视图
 
 struct AIGenerationPanelView: View {
-    @AppStorage("ai.apiKey") private var apiKey: String = ""
-    @AppStorage("ai.selectedStrategy") private var selectedStrategyID: String = "deepseek"
-    @AppStorage("ai.selectedModel") private var selectedModel: String = "deepseek-chat"
+    private let pluginID = "com.novelcraft.plugins.aigeneration"
+    
+    @State private var apiKey: String = ""
+    @State private var selectedStrategyID: String = "deepseek"
+    @State private var selectedModel: String = "deepseek-chat"
     
     @State private var prompt: String = ""
     @State private var generatedText: String = ""
@@ -78,7 +188,7 @@ struct AIGenerationPanelView: View {
     @State private var showConfig = false
     
     private var plugin: AIGenerationPlugin? {
-        PluginManager.shared.plugins.first(where: { $0.id == "com.novelcraft.plugins.aigeneration" }) as? AIGenerationPlugin
+        PluginManager.shared.plugins.first(where: { $0.id == pluginID }) as? AIGenerationPlugin
     }
     
     private var context: PluginContext {
@@ -103,6 +213,9 @@ struct AIGenerationPanelView: View {
         #if os(macOS)
         .frame(minWidth: 400, minHeight: 500)
         #endif
+        .onAppear {
+            loadConfig()
+        }
     }
     
     // MARK: - 子视图
@@ -299,6 +412,18 @@ struct AIGenerationPanelView: View {
     }
     
     // MARK: - 操作
+    
+    private func loadConfig() {
+        apiKey = PluginConfigStore.string(pluginID: pluginID, key: "apiKey") ?? ""
+        selectedStrategyID = PluginConfigStore.string(pluginID: pluginID, key: "strategy") ?? "deepseek"
+        selectedModel = PluginConfigStore.string(pluginID: pluginID, key: "model") ?? "deepseek-chat"
+    }
+    
+    private func saveConfig() {
+        PluginConfigStore.set(apiKey, pluginID: pluginID, key: "apiKey")
+        PluginConfigStore.set(selectedStrategyID, pluginID: pluginID, key: "strategy")
+        PluginConfigStore.set(selectedModel, pluginID: pluginID, key: "model")
+    }
     
     private func fillPromptFromContext() {
         guard let chapter = context.selectedChapter else {

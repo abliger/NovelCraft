@@ -11,6 +11,7 @@ struct PluginSettingsView: View {
     @State private var showDeleteConfirm = false
     @State private var showResetConfirm = false
     @State private var selectedPluginDetailID: String? = nil
+    @State private var selectedPluginConfigID: String? = nil
     
     /// 外部插件列表（可删除）
     private var externalPlugins: [any NovelCraftPlugin] {
@@ -93,6 +94,15 @@ struct PluginSettingsView: View {
                 PluginDetailSheet(plugin: plugin)
             }
         }
+        .sheet(isPresented: Binding(
+            get: { selectedPluginConfigID != nil },
+            set: { if !$0 { selectedPluginConfigID = nil } }
+        )) {
+            if let id = selectedPluginConfigID,
+               let plugin = pluginManager.plugins.first(where: { $0.id == id }) as? any PluginConfigurable {
+                PluginConfigSheet(plugin: plugin)
+            }
+        }
     }
     
     // MARK: - 空状态
@@ -135,7 +145,8 @@ struct PluginSettingsView: View {
                             isBuiltIn: true,
                             onToggle: { pluginManager.togglePlugin(plugin) },
                             onDelete: nil,
-                            onDetail: { selectedPluginDetailID = plugin.id }
+                            onDetail: { selectedPluginDetailID = plugin.id },
+                            onConfig: { selectedPluginConfigID = plugin.id }
                         )
                     }
                 } header: {
@@ -163,7 +174,8 @@ struct PluginSettingsView: View {
                                 pluginToDelete = plugin
                                 showDeleteConfirm = true
                             },
-                            onDetail: { selectedPluginDetailID = plugin.id }
+                            onDetail: { selectedPluginDetailID = plugin.id },
+                            onConfig: { selectedPluginConfigID = plugin.id }
                         )
                     }
                 } header: {
@@ -193,6 +205,7 @@ struct PluginManagementRow: View {
     let onToggle: () -> Void
     let onDelete: (() -> Void)?
     let onDetail: () -> Void
+    let onConfig: () -> Void
     
     var body: some View {
         HStack(spacing: 12) {
@@ -265,6 +278,18 @@ struct PluginManagementRow: View {
             }
             .buttonStyle(.borderless)
             .help("查看详情")
+            
+            // 配置按钮（仅可配置插件）
+            if plugin is any PluginConfigurable {
+                Button {
+                    onConfig()
+                } label: {
+                    Image(systemName: "gear")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("插件配置")
+            }
             
             // 删除按钮（仅外部插件）
             if let onDelete = onDelete {
@@ -404,6 +429,32 @@ struct PluginDetailSheet: View {
             list.append(("cursorarrow.click", "章节动作扩展"))
         }
         return list
+    }
+}
+
+// MARK: - 插件配置弹窗
+
+struct PluginConfigSheet: View {
+    let plugin: any PluginConfigurable
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("\(plugin.name) 配置")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                Spacer()
+                Button("关闭") { dismiss() }
+                    .keyboardShortcut(.escape, modifiers: [])
+            }
+            .padding()
+            
+            Divider()
+            
+            plugin.configurationView
+        }
+        .frame(minWidth: 360, idealWidth: 400, minHeight: 300, idealHeight: 400)
     }
 }
 
