@@ -186,10 +186,11 @@ struct ContentView: View {
         syncProjectStats()
         PluginManager.shared.context.updateProject(nil, container: nil)
         PluginManager.shared.context.updateSelectedChapter(nil)
-        projectContainer = nil
-        currentProject = nil
+        // 先清空选中项，让 SwiftUI 销毁 EditorView 并取消后台 Task，再释放容器
         selectedChapter = nil
         selectedVolume = nil
+        projectContainer = nil
+        currentProject = nil
     }
 
     /// 将当前项目的字数统计同步到注册表。

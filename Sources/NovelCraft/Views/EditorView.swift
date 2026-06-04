@@ -162,8 +162,10 @@ struct EditorView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 guard !Task.isCancelled else { return }
-                FileSyncEngine.syncChapterToDisk(chapter, project: project)
-                FileSyncEngine.syncSynopsisToDisk(chapter, project: project)
+                let ch = chapter
+                let pr = project
+                FileSyncEngine.syncChapterToDisk(ch, project: pr)
+                FileSyncEngine.syncSynopsisToDisk(ch, project: pr)
             }
         }
         .sheet(isPresented: $showBlockSearch) {
@@ -196,20 +198,21 @@ struct EditorView: View {
         saveTask?.cancel()
         let capturedChapterID = chapter.id
         let capturedText = editorText
+        let ctx = modelContext
         saveTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            // 防竞态：若章节已切换则跳过本次保存
-            guard chapter.id == capturedChapterID else { return }
-            let processedText = PluginManager.shared.processContent(capturedText, chapter: chapter)
-            // 如果内容处理器修改了文本，同步回编辑器
-            if processedText != capturedText {
-                await MainActor.run {
+            await MainActor.run {
+                guard chapter.id == capturedChapterID else { return }
+                let processedText = PluginManager.shared.processContent(capturedText, chapter: chapter)
+                if processedText != capturedText {
                     editorText = processedText
                     chapter.content = processedText
                 }
+                BlockRefEngine.syncRefs(sourceBlockID: capturedChapterID, content: processedText, context: ctx)
+                try? ctx.save()
+                loadForwardRefs()
             }
-            syncRefsAndSave(chapterID: capturedChapterID, text: processedText)
         }
     }
     
@@ -225,11 +228,10 @@ struct EditorView: View {
         forwardRefs = BlockRefEngine.forwardRefs(from: chapter.id, context: modelContext)
     }
     
-    /// 从文件系统加载当前章节的细纲，若存在则覆盖内存中的值
+    /// 从文件系统加载当前章节的细纲，若存在则覆盖内存中的值（不触发数据库保存）
     private func loadSynopsisFromDisk() {
         if let synopsis = FileSyncEngine.loadSynopsisFromDisk(chapter, project: project) {
             chapter.synopsis = synopsis
-            try? modelContext.save()
         }
     }
     
@@ -281,10 +283,14 @@ struct EditorView: View {
     @MainActor
     private func updatePreview() {
         previewTask?.cancel()
+        let text = editorText
+        let path = project.storagePath
         previewTask = Task {
-            let preview = await MarkdownParser.htmlAsync(from: editorText, baseURL: URL(fileURLWithPath: project.storagePath))
+            let preview = await MarkdownParser.htmlAsync(from: text, baseURL: URL(fileURLWithPath: path))
             guard !Task.isCancelled else { return }
-            cachedPreviewHTML = preview
+            await MainActor.run {
+                cachedPreviewHTML = preview
+            }
         }
     }
     

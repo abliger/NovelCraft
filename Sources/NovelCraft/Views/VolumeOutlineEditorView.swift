@@ -75,7 +75,6 @@ struct VolumeOutlineEditorView: View {
         }
         .onDisappear {
             saveTask?.cancel()
-            syncAndSave()
         }
         .onChange(of: volume.id) { _, _ in
             editorText = volume.outline
@@ -95,31 +94,39 @@ struct VolumeOutlineEditorView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 guard !Task.isCancelled else { return }
-                FileSyncEngine.syncVolumeToDisk(volume, project: project)
+                let vol = volume
+                let pr = project
+                FileSyncEngine.syncVolumeToDisk(vol, project: pr)
             }
         }
     }
     
-    /// 从文件系统加载卷大纲，若存在则覆盖内存中的值
+    /// 从文件系统加载卷大纲，若存在则覆盖内存中的值（不触发数据库保存）
     private func loadOutlineFromDisk() {
         if let outline = FileSyncEngine.loadVolumeFromDisk(volume, project: project) {
             volume.outline = outline
-            try? modelContext.save()
         }
     }
     
     /// 查找细纲中 title 与当前卷名相同的卷大纲节点（parent == nil）
+    /// 使用 FetchDescriptor 避免遍历 project.outlineNodes 关系属性触发懒加载
     private func findMatchingVolumeOutlineNode() -> OutlineNode? {
-        project.outlineNodes.first { $0.parent == nil && $0.title == volume.title }
+        let title = volume.title
+        let descriptor = FetchDescriptor<OutlineNode>(
+            predicate: #Predicate<OutlineNode> { node in
+                node.title == title
+            }
+        )
+        let nodes = (try? modelContext.fetch(descriptor)) ?? []
+        return nodes.first { $0.parent == nil }
     }
     
-    /// 从细纲卷大纲节点加载内容，若找到则覆盖到编辑器与 volume.outline
+    /// 从细纲卷大纲节点加载内容，若找到则覆盖到编辑器与 volume.outline（不触发数据库保存）
     private func loadFromOutlineNode() {
         guard let node = findMatchingVolumeOutlineNode() else { return }
         if !node.content.isEmpty, node.content != volume.outline {
             volume.outline = node.content
             editorText = node.content
-            try? modelContext.save()
         }
     }
     
@@ -128,14 +135,28 @@ struct VolumeOutlineEditorView: View {
         saveTask?.cancel()
         let capturedVolumeID = volume.id
         let capturedText = editorText
+        let ctx = modelContext
         saveTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            // 防竞态：若卷已切换则跳过本次保存
-            guard volume.id == capturedVolumeID else { return }
             await MainActor.run {
+                guard volume.id == capturedVolumeID else { return }
                 volume.outline = capturedText
-                syncAndSave()
+                try? ctx.save()
+                FileSyncEngine.syncVolumeToDisk(volume, project: project)
+                
+                if let node = findMatchingVolumeOutlineNode() {
+                    node.content = volume.outline
+                    node.title = volume.title
+                    node.updatedAt = Date()
+                    try? ctx.save()
+                } else if !volume.outline.isEmpty {
+                    let order = project.outlineNodes.filter { $0.parent == nil }.count
+                    let newNode = OutlineNode(title: volume.title, content: volume.outline, order: order, nodeType: "volume")
+                    newNode.project = project
+                    ctx.insert(newNode)
+                    try? ctx.save()
+                }
             }
         }
     }

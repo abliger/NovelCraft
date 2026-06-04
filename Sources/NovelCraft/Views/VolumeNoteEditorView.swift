@@ -95,7 +95,6 @@ struct VolumeNoteEditorView: View {
         .onDisappear {
             saveTask?.cancel()
             previewTask?.cancel()
-            syncAndSave()
         }
         .onChange(of: volume.id) { _, _ in
             editorText = volume.outline
@@ -119,7 +118,9 @@ struct VolumeNoteEditorView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
                 guard !Task.isCancelled else { return }
-                FileSyncEngine.syncVolumeToDisk(volume, project: project)
+                let vol = volume
+                let pr = project
+                FileSyncEngine.syncVolumeToDisk(vol, project: pr)
             }
         }
         .sheet(isPresented: $showBlockSearch) {
@@ -155,14 +156,15 @@ struct VolumeNoteEditorView: View {
         saveTask?.cancel()
         let capturedVolumeID = volume.id
         let capturedText = editorText
+        let ctx = modelContext
         saveTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            // 防竞态：若卷已切换则跳过本次保存
-            guard volume.id == capturedVolumeID else { return }
             await MainActor.run {
+                guard volume.id == capturedVolumeID else { return }
                 volume.outline = capturedText
-                syncAndSave()
+                try? ctx.save()
+                FileSyncEngine.syncVolumeToDisk(volume, project: project)
             }
         }
     }
@@ -220,10 +222,14 @@ struct VolumeNoteEditorView: View {
     @MainActor
     private func updatePreview() {
         previewTask?.cancel()
+        let text = editorText
+        let path = project.storagePath
         previewTask = Task {
-            let preview = await MarkdownParser.htmlAsync(from: editorText, baseURL: URL(fileURLWithPath: project.storagePath))
+            let preview = await MarkdownParser.htmlAsync(from: text, baseURL: URL(fileURLWithPath: path))
             guard !Task.isCancelled else { return }
-            cachedPreviewHTML = preview
+            await MainActor.run {
+                cachedPreviewHTML = preview
+            }
         }
     }
     
