@@ -219,9 +219,12 @@ struct VolumeSection: View {
             }
             .padding(.vertical, 2)
             .padding(.horizontal, 4)
-            .background(isSelected ? Color.accentColor.opacity(0.3) : Color.clear)
+            .background(isSelected ? Color.accentColor : Color.clear)
             .cornerRadius(4)
             .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                onToggle()
+            }
             .onTapGesture {
                 selectedVolume = volume
                 selectedChapter = nil
@@ -342,7 +345,7 @@ struct ChapterRow: View {
         }
         .padding(.vertical, 2)
         .padding(.horizontal, 4)
-        .background(isSelected ? Color.accentColor.opacity(0.3) : Color.clear)
+        .background(isSelected ? Color.accentColor : Color.clear)
         .cornerRadius(4)
         .contentShape(Rectangle())
         .onTapGesture {
