@@ -137,6 +137,32 @@ final class NovelCraftTests: XCTestCase {
         XCTAssertNotEqual(child.id, parent.id)
     }
     
+    /// 验证按卷名查找细纲卷大纲节点（parent == nil）逻辑。
+    func testFindVolumeOutlineNodeByTitle() {
+        let project = Project(title: "测试", storagePath: "/tmp/test-outline")
+        let volume = Volume(title: "第一卷")
+        volume.project = project
+        
+        let volumeNode = OutlineNode(title: "第一卷", content: "卷大纲内容", nodeType: "volume")
+        volumeNode.project = project
+        
+        let otherNode = OutlineNode(title: "第二卷", content: "其他内容", nodeType: "volume")
+        otherNode.project = project
+        
+        let childNode = OutlineNode(title: "第一卷", content: "子节点不应匹配", nodeType: "detail", parent: volumeNode)
+        childNode.project = project
+        
+        // 按 parent == nil + title 匹配应找到顶层卷大纲节点
+        let found = project.outlineNodes.first { $0.parent == nil && $0.title == volume.title }
+        XCTAssertNotNil(found)
+        XCTAssertEqual(found?.content, "卷大纲内容")
+        
+        // 子节点（parent != nil）不应被匹配
+        let childMatch = project.outlineNodes.first { $0.parent == nil && $0.title == "第一卷" }
+        XCTAssertEqual(childMatch?.content, "卷大纲内容")
+        XCTAssertNotEqual(childMatch?.content, "子节点不应匹配")
+    }
+    
     /// 验证 Note 基本属性与颜色校验。
     func testNoteCreation() {
         let note = Note(title: "灵感", content: "一个想法", color: "red")

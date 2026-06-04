@@ -316,7 +316,6 @@ struct ContentView: View {
                 Button {
                     withAnimation {
                         selectedProjectID = nil
-                        selectedChapter = nil
                     }
                 } label: {
                     Image(systemName: "books.vertical")
@@ -340,8 +339,6 @@ struct ContentView: View {
                        let linkedID = ProjectRegistry.shared.findLinkedProjectID(for: project.id) {
                         selectedProjectID = linkedID
                         isSpreadsheetActive = false
-                        selectedChapter = nil
-                        selectedVolume = nil
                     }
                 } label: {
                     Image(systemName: "arrow.left.arrow.right.circle")

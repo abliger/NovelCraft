@@ -71,6 +71,7 @@ struct VolumeOutlineEditorView: View {
         .onAppear {
             editorText = volume.outline
             loadOutlineFromDisk()
+            loadFromOutlineNode()
         }
         .onDisappear {
             saveTask?.cancel()
@@ -79,6 +80,7 @@ struct VolumeOutlineEditorView: View {
         .onChange(of: volume.id) { _, _ in
             editorText = volume.outline
             loadOutlineFromDisk()
+            loadFromOutlineNode()
         }
         .onChange(of: volume.outline) { _, newValue in
             if newValue != editorText {
@@ -106,6 +108,21 @@ struct VolumeOutlineEditorView: View {
         }
     }
     
+    /// 查找细纲中 title 与当前卷名相同的卷大纲节点（parent == nil）
+    private func findMatchingVolumeOutlineNode() -> OutlineNode? {
+        project.outlineNodes.first { $0.parent == nil && $0.title == volume.title }
+    }
+    
+    /// 从细纲卷大纲节点加载内容，若找到则覆盖到编辑器与 volume.outline
+    private func loadFromOutlineNode() {
+        guard let node = findMatchingVolumeOutlineNode() else { return }
+        if !node.content.isEmpty, node.content != volume.outline {
+            volume.outline = node.content
+            editorText = node.content
+            try? modelContext.save()
+        }
+    }
+    
     /// 延迟保存，避免每次按键都触发数据库写入
     private func debouncedSave() {
         saveTask?.cancel()
@@ -123,9 +140,22 @@ struct VolumeOutlineEditorView: View {
         }
     }
     
-    /// 同步到数据库与文件系统
+    /// 同步到数据库、文件系统与细纲卷大纲节点
     private func syncAndSave() {
         try? modelContext.save()
         FileSyncEngine.syncVolumeToDisk(volume, project: project)
+        
+        if let node = findMatchingVolumeOutlineNode() {
+            node.content = volume.outline
+            node.title = volume.title
+            node.updatedAt = Date()
+            try? modelContext.save()
+        } else if !volume.outline.isEmpty {
+            let order = project.outlineNodes.filter { $0.parent == nil }.count
+            let newNode = OutlineNode(title: volume.title, content: volume.outline, order: order, nodeType: "volume")
+            newNode.project = project
+            modelContext.insert(newNode)
+            try? modelContext.save()
+        }
     }
 }
