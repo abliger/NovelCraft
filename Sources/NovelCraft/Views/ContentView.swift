@@ -41,6 +41,8 @@ struct ContentView: View {
     @State private var selectedVolume: Volume? = nil
     /// 当前展开的卷 ID 集合
     @State private var expandedVolumeIDs: Set<UUID> = []
+    /// 是否正在恢复项目状态（恢复期间跳过保存）
+    @State private var isRestoringState = false
     /// 是否进入专注模式
     @State private var isFocusMode = false
     #if os(iOS)

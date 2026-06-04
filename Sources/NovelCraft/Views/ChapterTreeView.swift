@@ -219,9 +219,10 @@ struct VolumeSection: View {
                 .help("卷操作")
             }
             .padding(.vertical, 4)
-            .contentShape(Rectangle())
+            .padding(.horizontal, 4)
             .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-            .cornerRadius(6)
+            .cornerRadius(4)
+            .contentShape(Rectangle())
             .onTapGesture {
                 selectedVolume = volume
                 selectedChapter = nil
