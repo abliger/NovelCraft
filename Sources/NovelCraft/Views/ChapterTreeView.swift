@@ -46,7 +46,7 @@ struct ChapterTreeView: View {
             
             Divider()
             
-            List(selection: $selectedChapter) {
+            List {
                 ForEach(sortedVolumes) { volume in
                     VolumeSection(
                         volume: volume,
@@ -142,7 +142,6 @@ struct VolumeSection: View {
                         selectedChapter: $selectedChapter,
                         selectedVolume: $selectedVolume
                     )
-                    .tag(chapter)
                 }
                 .onDelete { indexSet in
                     deleteChapters(at: indexSet)
@@ -218,7 +217,7 @@ struct VolumeSection: View {
                 .frame(width: 20)
                 .help("卷操作")
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
             .padding(.horizontal, 4)
             .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
             .cornerRadius(4)
