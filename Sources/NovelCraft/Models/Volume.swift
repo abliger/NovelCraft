@@ -15,6 +15,9 @@ final class Volume {
     var createdAt: Date
     /// 最后更新时间
     var updatedAt: Date
+    /// 卷大纲/内容（小说项目作分卷大纲，笔记项目作卷正文）
+    @Attribute(.externalStorage)
+    var outline: String
     
     /// 所属项目（反向关系）
     @Relationship(deleteRule: .nullify)
@@ -24,12 +27,13 @@ final class Volume {
     @Relationship(deleteRule: .cascade, inverse: \Chapter.volume)
     var chapters: [Chapter] = []
     
-    init(title: String = "新卷", order: Int = 0) {
+    init(title: String = "新卷", order: Int = 0, outline: String = "") {
         self.id = UUID()
         self.title = title
         self.order = order
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.outline = outline
     }
     
     /// 计算当前卷下所有章节的总字数（字符数）

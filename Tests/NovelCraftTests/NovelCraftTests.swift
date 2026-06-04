@@ -43,6 +43,44 @@ final class NovelCraftTests: XCTestCase {
         XCTAssertEqual(volume.title, "第一卷")
         XCTAssertEqual(volume.order, 0)
         XCTAssertEqual(volume.project?.title, "测试")
+        XCTAssertEqual(volume.outline, "")
+    }
+    
+    /// 验证 Volume outline 字段赋值与持久化。
+    func testVolumeOutlineField() {
+        let volume = Volume(title: "第二卷", outline: "这是一个大纲")
+        XCTAssertEqual(volume.outline, "这是一个大纲")
+        
+        let emptyVolume = Volume()
+        XCTAssertEqual(emptyVolume.outline, "")
+    }
+    
+    /// 验证卷文件同步引擎能正确写入与读取卷内容。
+    func testVolumeFileSync() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        
+        let project = Project(title: "同步测试", storagePath: tempDir.path)
+        let volume = Volume(title: "测试卷", outline: "卷的大纲内容。")
+        volume.project = project
+        
+        // 写入
+        FileSyncEngine.syncVolumeToDisk(volume, project: project)
+        
+        // 验证文件存在
+        let fileURL = FileSyncEngine.volumeFileURL(volume: volume, project: project)
+        XCTAssertNotNil(fileURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL!.path))
+        
+        // 验证内容
+        let content = try String(contentsOf: fileURL!, encoding: .utf8)
+        XCTAssertEqual(content, "卷的大纲内容。")
+        
+        // 验证读取
+        let loaded = FileSyncEngine.loadVolumeFromDisk(volume, project: project)
+        XCTAssertEqual(loaded, "卷的大纲内容。")
     }
     
     /// 验证 ChapterStatus 枚举与 Chapter 状态属性的映射。

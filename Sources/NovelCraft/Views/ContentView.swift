@@ -37,6 +37,10 @@ struct ContentView: View {
     @State private var selectedPluginPanelID: String? = nil
     /// 当前选中的章节
     @State private var selectedChapter: Chapter? = nil
+    /// 当前选中的卷
+    @State private var selectedVolume: Volume? = nil
+    /// 当前展开的卷 ID 集合
+    @State private var expandedVolumeIDs: Set<UUID> = []
     /// 是否进入专注模式
     @State private var isFocusMode = false
     #if os(iOS)
@@ -91,6 +95,10 @@ struct ContentView: View {
         }
         .onChange(of: selectedChapter) { _, newValue in
             PluginManager.shared.context.updateSelectedChapter(newValue)
+            saveProjectState()
+        }
+        .onChange(of: selectedVolume) { _, _ in
+            saveProjectState()
         }
 
     }
@@ -141,12 +149,11 @@ struct ContentView: View {
         let descriptor = FetchDescriptor<Project>()
         let dbProjects = try context.fetch(descriptor)
 
-        if let project = dbProjects.first {
+        let project: Project
+        if let existing = dbProjects.first {
             // 同步注册表中的最新元数据到数据库
-            syncMetaToProject(meta: meta, project: project, context: context)
-            self.projectContainer = container
-            self.currentProject = project
-            PluginManager.shared.context.updateProject(project, container: container)
+            syncMetaToProject(meta: meta, project: existing, context: context)
+            project = existing
         } else {
             // 数据库中不存在 Project 记录，新建一个
             let newProject = Project(
@@ -162,20 +169,25 @@ struct ContentView: View {
             newProject.id = meta.id
             context.insert(newProject)
             try context.save()
-            self.projectContainer = container
-            self.currentProject = newProject
-            PluginManager.shared.context.updateProject(newProject, container: container)
+            project = newProject
         }
+        
+        self.projectContainer = container
+        self.currentProject = project
+        PluginManager.shared.context.updateProject(project, container: container)
+        loadProjectState(project: project, context: context)
     }
 
     /// 关闭当前项目，清理数据库容器，并将最新统计信息同步到注册表。
     private func closeProject() {
+        saveProjectState()
         syncProjectStats()
         PluginManager.shared.context.updateProject(nil, container: nil)
         PluginManager.shared.context.updateSelectedChapter(nil)
         projectContainer = nil
         currentProject = nil
         selectedChapter = nil
+        selectedVolume = nil
     }
 
     /// 将当前项目的字数统计同步到注册表。
@@ -200,6 +212,51 @@ struct ContentView: View {
         project.linkedProjectID = meta.linkedProjectID
         try? context.save()
     }
+    
+    // MARK: - 项目状态持久化
+    
+    private func projectStateKey(for projectID: UUID) -> String {
+        "NovelCraft.projectState.\(projectID.uuidString)"
+    }
+    
+    /// 保存当前项目的选中项到 UserDefaults。
+    private func saveProjectState() {
+        guard let project = currentProject else { return }
+        var state: [String: Any] = [:]
+        if let chapter = selectedChapter {
+            state["selectedChapterID"] = chapter.id.uuidString
+        }
+        if let volume = selectedVolume {
+            state["selectedVolumeID"] = volume.id.uuidString
+        }
+        if let data = try? JSONSerialization.data(withJSONObject: state) {
+            UserDefaults.standard.set(data, forKey: projectStateKey(for: project.id))
+        }
+    }
+    
+    /// 从 UserDefaults 恢复项目的选中项与展开状态。
+    private func loadProjectState(project: Project, context: ModelContext) {
+        guard let data = UserDefaults.standard.data(forKey: projectStateKey(for: project.id)),
+              let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return
+        }
+        
+        if let chapterIDString = state["selectedChapterID"] as? String,
+           let chapterID = UUID(uuidString: chapterIDString) {
+            selectedChapter = project.volumes
+                .flatMap { $0.chapters }
+                .first { $0.id == chapterID }
+        }
+        
+        if let volumeIDString = state["selectedVolumeID"] as? String,
+           let volumeID = UUID(uuidString: volumeIDString) {
+            selectedVolume = project.volumes.first { $0.id == volumeID }
+        }
+        
+        if let expandedIDs = state["expandedVolumeIDs"] as? [String] {
+            expandedVolumeIDs = Set(expandedIDs.compactMap { UUID(uuidString: $0) })
+        }
+    }
 
     /// 主编辑界面：左侧 NavigationSplitView + 右侧条件渲染的辅助面板。
     /// 注意：macOS 上 .inspector 在 resize 时存在 AppKit 布局崩溃的已知问题，
@@ -209,7 +266,9 @@ struct ContentView: View {
         NavigationSplitView {
             ChapterTreeView(
                 project: project,
-                selectedChapter: $selectedChapter
+                selectedChapter: $selectedChapter,
+                selectedVolume: $selectedVolume,
+                expandedVolumes: $expandedVolumeIDs
             )
             .navigationSplitViewColumnWidth(min: 200, ideal: 280)
         } detail: {
@@ -224,6 +283,14 @@ struct ContentView: View {
                             chapter: chapter
                         )
                         .id(chapter.id)
+                    } else if let volume = selectedVolume {
+                        if project.projectType == "note" {
+                            VolumeNoteEditorView(project: project, volume: volume)
+                                .id(volume.id)
+                        } else {
+                            VolumeOutlineEditorView(project: project, volume: volume)
+                                .id(volume.id)
+                        }
                     } else {
                         EmptyEditorView(project: project)
                     }
@@ -272,6 +339,7 @@ struct ContentView: View {
                         selectedProjectID = linkedID
                         isSpreadsheetActive = false
                         selectedChapter = nil
+                        selectedVolume = nil
                     }
                 } label: {
                     Image(systemName: "arrow.left.arrow.right.circle")
@@ -288,7 +356,7 @@ struct ContentView: View {
                     Image(systemName: "lightbulb")
                 }
                 .help("专注模式 (⇧⌘F)")
-                .disabled(selectedChapter == nil || isSpreadsheetActive)
+                .disabled(selectedChapter == nil || selectedVolume != nil || isSpreadsheetActive)
             }
 
             ToolbarItem {
@@ -426,22 +494,26 @@ struct EmptyEditorView: View {
     let project: Project?
 
     var body: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 60))
-                .foregroundStyle(.secondary)
+        if project?.projectType == "note" {
+            Color.clear
+        } else {
+            VStack(spacing: 20) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.secondary)
 
-            Text("选择一个章节开始写作")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+                Text("选择一个章节开始写作")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
 
-            if let project = project {
-                HStack(spacing: 30) {
-                    StatCard(title: "总字数", value: "\(project.totalWordCount)")
-                    StatCard(title: "目标字数", value: "\(project.targetWordCount)")
-                    StatCard(title: "完成度", value: "\(Int(project.progressPercentage * 100))%")
+                if let project = project {
+                    HStack(spacing: 30) {
+                        StatCard(title: "总字数", value: "\(project.totalWordCount)")
+                        StatCard(title: "目标字数", value: "\(project.targetWordCount)")
+                        StatCard(title: "完成度", value: "\(Int(project.progressPercentage * 100))%")
+                    }
+                    .padding(.top, 20)
                 }
-                .padding(.top, 20)
             }
         }
     }

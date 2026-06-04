@@ -65,6 +65,32 @@ struct FileSyncEngine {
         return try? String(contentsOf: fileURL, encoding: .utf8)
     }
     
+    // MARK: - 卷文件同步
+    
+    /// 将指定卷的内容同步到项目指定的存储目录。
+    /// 路径结构为：storagePath/卷名/卷名_UUID前缀.md
+    static func syncVolumeToDisk(_ volume: Volume, project: Project) {
+        guard let fileURL = volumeFileURL(volume: volume, project: project) else { return }
+        
+        do {
+            try FileManager.default.createDirectory(
+                at: fileURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try volume.outline.write(to: fileURL, atomically: true, encoding: .utf8)
+        } catch {
+            print("卷文件同步失败: \(error)")
+        }
+    }
+    
+    /// 从文件系统加载指定卷的内容。
+    /// 若文件不存在，返回 nil。
+    static func loadVolumeFromDisk(_ volume: Volume, project: Project) -> String? {
+        guard let fileURL = volumeFileURL(volume: volume, project: project) else { return nil }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        return try? String(contentsOf: fileURL, encoding: .utf8)
+    }
+    
     // MARK: - 路径计算
     
     /// 计算章节正文文件的 URL。
@@ -108,9 +134,26 @@ struct FileSyncEngine {
         return baseURL.appendingPathComponent(sanitizedVolume)
     }
     
+    /// 计算卷内容文件的 URL。
+    static func volumeFileURL(volume: Volume, project: Project) -> URL? {
+        let storagePath = project.storagePath
+        guard validatePath(storagePath) else { return nil }
+        
+        let sanitizedVolume = sanitizeFileName(volume.title)
+        let baseURL = URL(fileURLWithPath: storagePath)
+        let volumeDir = baseURL.appendingPathComponent(sanitizedVolume)
+        let fileName = volumeFileName(volume: volume)
+        return volumeDir.appendingPathComponent(fileName)
+    }
+    
     private static func chapterFileName(chapter: Chapter, extension ext: String) -> String {
         let sanitizedChapter = sanitizeFileName(chapter.title)
         return "\(sanitizedChapter)_\(chapter.id.uuidString.prefix(8)).\(ext)"
+    }
+    
+    private static func volumeFileName(volume: Volume) -> String {
+        let sanitizedVolume = sanitizeFileName(volume.title)
+        return "\(sanitizedVolume)_\(volume.id.uuidString.prefix(8)).md"
     }
     
     /// 清理文件名，移除不适合作为文件名的字符。

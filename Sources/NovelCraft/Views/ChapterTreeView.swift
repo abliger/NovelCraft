@@ -6,10 +6,17 @@ struct ChapterTreeView: View {
     @Environment(\.modelContext) private var modelContext
     let project: Project?
     @Binding var selectedChapter: Chapter?
+    @Binding var selectedVolume: Volume?
+    @Binding var expandedVolumes: Set<UUID>
     
     @FocusState private var renameFocus: Bool
-    /// 记录当前展开的卷 ID 集合
-    @State private var expandedVolumes: Set<UUID> = []
+    
+    init(project: Project?, selectedChapter: Binding<Chapter?>, selectedVolume: Binding<Volume?>, expandedVolumes: Binding<Set<UUID>>) {
+        self.project = project
+        self._selectedChapter = selectedChapter
+        self._selectedVolume = selectedVolume
+        self._expandedVolumes = expandedVolumes
+    }
     
     /// 按 order 排序后的卷列表
     private var sortedVolumes: [Volume] {
@@ -44,6 +51,7 @@ struct ChapterTreeView: View {
                     VolumeSection(
                         volume: volume,
                         selectedChapter: $selectedChapter,
+                        selectedVolume: $selectedVolume,
                         isExpanded: expandedVolumes.contains(volume.id),
                         onToggle: { toggleVolume(volume.id) }
                     )
@@ -76,11 +84,13 @@ struct ChapterTreeView: View {
     }
     
     /// 在当前上下文中新建一个章节。
-    /// 优先添加到当前选中章节所属的卷；若未选中章节，则添加到当前唯一展开的卷；否则添加到最后一卷。
+    /// 优先顺序：当前选中章节所属的卷 → 当前选中的卷 → 唯一展开的卷 → 最后一卷。
     private func addChapter() {
         let targetVolume: Volume?
         if let chapter = selectedChapter {
             targetVolume = chapter.volume
+        } else if let volume = selectedVolume {
+            targetVolume = volume
         } else if expandedVolumes.count == 1,
                   let volumeID = expandedVolumes.first {
             targetVolume = sortedVolumes.first { $0.id == volumeID }
@@ -95,6 +105,7 @@ struct ChapterTreeView: View {
         modelContext.insert(chapter)
         try? modelContext.save()
         selectedChapter = chapter
+        selectedVolume = nil
         expandedVolumes.insert(volume.id)
     }
 }
@@ -104,6 +115,7 @@ struct VolumeSection: View {
     @Environment(\.modelContext) private var modelContext
     let volume: Volume
     @Binding var selectedChapter: Chapter?
+    @Binding var selectedVolume: Volume?
     let isExpanded: Bool
     let onToggle: () -> Void
     
@@ -116,12 +128,21 @@ struct VolumeSection: View {
         volume.chapters.sorted { $0.order < $1.order }
     }
     
+    /// 当前卷是否被选中
+    private var isSelected: Bool {
+        selectedVolume?.id == volume.id
+    }
+    
     var body: some View {
         Section {
             if isExpanded {
                 ForEach(sortedChapters) { chapter in
-                    ChapterRow(chapter: chapter, selectedChapter: $selectedChapter)
-                        .tag(chapter)
+                    ChapterRow(
+                        chapter: chapter,
+                        selectedChapter: $selectedChapter,
+                        selectedVolume: $selectedVolume
+                    )
+                    .tag(chapter)
                 }
                 .onDelete { indexSet in
                     deleteChapters(at: indexSet)
@@ -182,6 +203,9 @@ struct VolumeSection: View {
                             }
                             BlockRefEngine.deleteRefs(for: chapter.id, context: modelContext)
                         }
+                        if selectedVolume?.id == volume.id {
+                            selectedVolume = nil
+                        }
                         BlockRefEngine.deleteRefs(for: volume.id, context: modelContext)
                         modelContext.delete(volume)
                         try? modelContext.save()
@@ -196,8 +220,11 @@ struct VolumeSection: View {
             }
             .padding(.vertical, 4)
             .contentShape(Rectangle())
+            .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+            .cornerRadius(6)
             .onTapGesture {
-                onToggle()
+                selectedVolume = volume
+                selectedChapter = nil
             }
         }
     }
@@ -210,6 +237,7 @@ struct VolumeSection: View {
         modelContext.insert(chapter)
         try? modelContext.save()
         selectedChapter = chapter
+        selectedVolume = nil
     }
     
     /// 删除指定索引位置的章节
@@ -241,10 +269,16 @@ struct ChapterRow: View {
     @Environment(\.modelContext) private var modelContext
     let chapter: Chapter
     @Binding var selectedChapter: Chapter?
+    @Binding var selectedVolume: Volume?
     
     @State private var isRenaming = false
     @State private var renameText = ""
     @FocusState private var renameFocus: Bool
+    
+    /// 当前章节是否被选中
+    private var isSelected: Bool {
+        selectedChapter?.id == chapter.id
+    }
     
     var body: some View {
         HStack(spacing: 8) {
@@ -307,6 +341,14 @@ struct ChapterRow: View {
             .help("章节操作")
         }
         .padding(.vertical, 2)
+        .padding(.horizontal, 4)
+        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+        .cornerRadius(4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedChapter = chapter
+            selectedVolume = nil
+        }
         .contextMenu {
             Button("重命名") {
                 renameText = chapter.title
