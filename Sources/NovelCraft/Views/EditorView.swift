@@ -28,8 +28,8 @@ struct EditorView: View {
     @State private var saveTask: Task<Void, Never>?
     /// 预览更新任务（用于取消旧任务）
     @State private var previewTask: Task<Void, Never>?
-    /// 缓存的 Markdown 预览 HTML
-    @State private var cachedPreviewHTML: String = ""
+    /// 缓存的 Markdown 预览 AttributedString
+    @State private var cachedPreviewAttributed: AttributedString = AttributedString()
     /// 是否显示内容块搜索面板
     @State private var showBlockSearch = false
     /// 是否显示反向链接面板
@@ -48,6 +48,13 @@ struct EditorView: View {
     @AppStorage("imageHandlingMode") private var imageHandlingMode = 1
     /// 是否允许下载网络图片
     @AppStorage("allowDownloadWebImages") private var allowDownloadWebImages = true
+    
+    // MARK: - 智能浮动按钮
+    @State private var replaceCommand: TextReplaceCommand? = nil
+    @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
+    @State private var hasSelection: Bool = false
+    @State private var isCursorAtEnd: Bool = false
+    @State private var isAIProcessing: Bool = false
     
     /// 标识当前编辑器使用 Markdown 格式
     private var isMarkdown: Bool {
@@ -79,23 +86,32 @@ struct EditorView: View {
                 // 主编辑/预览区域
                 ZStack {
                     if isPreviewMode {
-                        PreviewWebView(
-                            htmlString: cachedPreviewHTML,
-                            baseURL: URL(fileURLWithPath: project.storagePath)
-                        )
-                        .padding()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        ScrollView {
+                            Text(cachedPreviewAttributed)
+                                .padding()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        }
                     } else {
-                        TextEditor(text: $editorText)
-                            .font(.system(size: fontSize))
-                            .lineSpacing(lineSpacing)
-                            .padding(.horizontal)
-                            .scrollContentBackground(.hidden)
+                        ZStack {
+                            SmartTextEditor(
+                                text: $editorText,
+                                fontSize: fontSize,
+                                lineSpacing: lineSpacing,
+                                replaceCommand: $replaceCommand,
+                                onSelectionChange: { hasSel, range, atEnd in
+                                    selectedRange = range
+                                    hasSelection = hasSel
+                                    isCursorAtEnd = atEnd
+                                }
+                            )
                             #if os(macOS)
                             .background(Color(.textBackgroundColor))
                             #else
                             .background(Color(.systemBackground))
                             #endif
+                            
+                            aiFloatingBar
+                        }
                     }
                 }
                 
@@ -279,17 +295,165 @@ struct EditorView: View {
         }
     }
     
+    // MARK: - 智能浮动按钮
+    
+    /// 浮动 AI 操作按钮条，根据选区状态动态显示改写/扩写/续写。
+    @ViewBuilder
+    private var aiFloatingBar: some View {
+        if !isAIProcessing && (hasSelection || isCursorAtEnd) {
+            VStack(spacing: 0) {
+                Spacer()
+                HStack(spacing: 0) {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        if hasSelection {
+                            Button {
+                                performRewrite()
+                            } label: {
+                                Label("改写", systemImage: "wand.and.stars")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            
+                            Button {
+                                performExpand()
+                            } label: {
+                                Label("扩写", systemImage: "text.badge.plus")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        } else if isCursorAtEnd {
+                            Button {
+                                performContinue()
+                            } label: {
+                                Label("续写", systemImage: "sparkles")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(20)
+                    .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                    Spacer()
+                }
+                .padding(.bottom, 12)
+            }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .animation(.easeInOut(duration: 0.2), value: hasSelection)
+            .animation(.easeInOut(duration: 0.2), value: isCursorAtEnd)
+        }
+    }
+    
+    // MARK: - AI 操作
+    
+    private func performRewrite() {
+        performAIAction(mode: .rewrite)
+    }
+    
+    private func performExpand() {
+        performAIAction(mode: .expand)
+    }
+    
+    private func performContinue() {
+        withAnimation {
+            showAIGeneration = true
+        }
+    }
+    
+    private enum AIOperationMode {
+        case rewrite
+        case expand
+    }
+    
+    private func performAIAction(mode: AIOperationMode) {
+        guard let plugin = PluginManager.shared.plugins.first(where: {
+            $0.id == "com.novelcraft.plugins.aigeneration"
+        }) as? AIGenerationPlugin else { return }
+        
+        guard !plugin.apiKey.isEmpty else {
+            withAnimation { showAIGeneration = true }
+            return
+        }
+        
+        let selectedText = (editorText as NSString).substring(with: selectedRange)
+        guard !selectedText.isEmpty else { return }
+        
+        let prompt = buildAIPrompt(for: mode, selectedText: selectedText)
+        
+        isAIProcessing = true
+        Task {
+            do {
+                let result = try await plugin.generateContent(
+                    prompt: prompt,
+                    strategyID: plugin.selectedStrategyID,
+                    apiKey: plugin.apiKey,
+                    model: plugin.selectedModel
+                )
+                await MainActor.run {
+                    replaceCommand = TextReplaceCommand(
+                        range: selectedRange,
+                        replacement: result
+                    )
+                    isAIProcessing = false
+                }
+            } catch {
+                await MainActor.run {
+                    isAIProcessing = false
+                }
+            }
+        }
+    }
+    
+    private func buildAIPrompt(for mode: AIOperationMode, selectedText: String) -> String {
+        let instruction: String
+        switch mode {
+        case .rewrite:
+            instruction = "请对以下文本进行改写。保留核心情节和原意，但改变叙述方式、调整句式节奏，使文字更自然、更有真人写作的感觉。"
+        case .expand:
+            instruction = "请对以下文本进行扩写。在保留原意的基础上，增加细节描写、环境渲染或心理刻画，让内容更加丰满生动。注意节奏，不要过度堆砌。"
+        }
+        
+        return """
+        # 小说创作助手指令
+        
+        你是一位专业中文小说创作助手。
+        
+        ## 写作风格约束（严格遵守）
+        1. **去除 AI 味**：禁止出现典型 AI 用语，如"大脑宕机了大约三秒钟"、"这是真实不虚的爱"、"陷入了沉思"、"眼中闪过一丝复杂"等。
+        2. **减少心理独白**：不要大段堆砌内心独白和心理描写。用动作、对话和环境反应来暗示人物心理，而非直接解释。
+        3. **句子要有节奏**：长短句交错，不要句句工整对称。允许省略主语，允许口语化断句。
+        4. **叙事直接**：不要过度解释"为什么"，先写"发生了什么"。读者能自己理解的情节，不要加旁白解释。
+        5. **感官细节克制**：环境描写点到为止，不要连续堆砌视觉、嗅觉、听觉、触觉。一个场景最多一到两处细节即可。
+        6. **对话自然**：对话要符合人物身份和当下情绪，不要像演讲或说明书。适当使用方言、口头禅、省略、打断。
+        7. **节奏优先**：不要每个场景都铺陈完整。该快就快，该留白就留白。
+        
+        ---
+        
+        \(instruction)
+        
+        需要处理的文本：
+        \(selectedText)
+        """
+    }
+    
     /// 异步更新 Markdown 预览缓存，取消旧任务避免竞态
     @MainActor
     private func updatePreview() {
         previewTask?.cancel()
         let text = editorText
-        let path = project.storagePath
         previewTask = Task {
-            let preview = await MarkdownParser.htmlAsync(from: text, baseURL: URL(fileURLWithPath: path))
+            let preview = await Task.detached(priority: .userInitiated) {
+                MarkdownKitPreviewRenderer.render(text)
+            }.value
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                cachedPreviewHTML = preview
+                cachedPreviewAttributed = preview
             }
         }
     }

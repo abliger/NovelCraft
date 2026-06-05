@@ -28,8 +28,8 @@ struct VolumeNoteEditorView: View {
     @State private var saveTask: Task<Void, Never>?
     /// 预览更新任务（用于取消旧任务）
     @State private var previewTask: Task<Void, Never>?
-    /// 缓存的 Markdown 预览 HTML
-    @State private var cachedPreviewHTML: String = ""
+    /// 缓存的 Markdown 预览 AttributedString
+    @State private var cachedPreviewAttributed: AttributedString = AttributedString()
     /// 是否显示内容块搜索面板
     @State private var showBlockSearch = false
     /// 是否显示图片插入面板
@@ -63,12 +63,11 @@ struct VolumeNoteEditorView: View {
             // 主编辑/预览区域
             ZStack {
                 if isPreviewMode {
-                    PreviewWebView(
-                        htmlString: cachedPreviewHTML,
-                        baseURL: URL(fileURLWithPath: project.storagePath)
-                    )
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    ScrollView {
+                        Text(cachedPreviewAttributed)
+                            .padding()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
                 } else {
                     TextEditor(text: $editorText)
                         .font(.system(size: fontSize))
@@ -223,12 +222,13 @@ struct VolumeNoteEditorView: View {
     private func updatePreview() {
         previewTask?.cancel()
         let text = editorText
-        let path = project.storagePath
         previewTask = Task {
-            let preview = await MarkdownParser.htmlAsync(from: text, baseURL: URL(fileURLWithPath: path))
+            let preview = await Task.detached(priority: .userInitiated) {
+                MarkdownKitPreviewRenderer.render(text)
+            }.value
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                cachedPreviewHTML = preview
+                cachedPreviewAttributed = preview
             }
         }
     }
