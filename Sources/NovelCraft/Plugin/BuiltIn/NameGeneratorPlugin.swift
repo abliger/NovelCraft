@@ -9,7 +9,7 @@ import SwiftUI
 final class NameGeneratorPlugin: NovelCraftPlugin, EditorToolbarContributor, SidebarPanelContributor {
     let id = "com.novelcraft.plugins.namegenerator"
     let name = "人名生成器"
-    let description = "一键生成中文姓名、西方姓名与奇幻风格姓名，可直接插入到编辑器中。"
+    let description = "一键生成中文姓名、西方姓名、日本姓名与奇幻风格姓名，可直接插入到编辑器中。"
     let version = "1.0.0"
     let author = "NovelCraft 官方"
     var isEnabled: Bool = true
@@ -63,6 +63,22 @@ final class NameGeneratorPlugin: NovelCraftPlugin, EditorToolbarContributor, Sid
         "dorin", "ian", "ara", "eth", "on", "iel", "ira", "os", "une", "ax",
         "indra", "ovar", "umas", "eris", "alon", "endil", "amir", "oth", "exus", "ael",
     ]
+    private let japaneseSurnames = [
+        "佐藤", "铃木", "高桥", "田中", "伊藤", "山本", "中村", "小林", "加藤", "吉田",
+        "山田", "佐佐木", "木村", "松本", "井上", "清水", "林", "森", "桥本", "阿部",
+        "池田", "福田", "前田", "藤田", "后藤", "远藤", "青木", "村上", "小野", "坂本",
+    ]
+    private let japaneseMaleNames = [
+        "太郎", "次郎", "一郎", "健太", "翔太", "拓也", "雄大", "直树", "浩二", "勇人",
+        "大和", "海斗", "悠真", "莲", "苍太", "陽翔", "湊", "樹", "颯太", "匠",
+        "修平", "亮介", "恭平", "達也", "誠", "裕太", "和也", "啓太", "崇", "慎吾",
+    ]
+    private let japaneseFemaleNames = [
+        "樱花", "美咲", "结衣", "爱子", "由美", "千代", "百合子", "真理子", "明日香", "玲奈",
+        "陽菜", "結菜", "心美", "優奈", "葵", "芽衣", "美月", "七海", "琴音", "詩織",
+        "奈奈", "彩香", "美穂", "早紀", "真由", "里奈", "舞", "紗季", "恵", "香織",
+    ]
+    
     private let fantasyTitles = [
         "", "the Wise", "the Brave", "Shadowbane", "Stormborn", "Dawnstrider",
         "Ironheart", "Moonwhisper", "Firebrand", "Frostward", "Starweaver",
@@ -134,6 +150,16 @@ final class NameGeneratorPlugin: NovelCraftPlugin, EditorToolbarContributor, Sid
             guard let first = westernFirstNames.randomElement(),
                   let last = westernLastNames.randomElement() else { return "" }
             return "\(first) \(last)"
+            
+        case .japanese:
+            guard let surname = japaneseSurnames.randomElement() else { return "" }
+            let roll = Int.random(in: 0...1)
+            let namePart: String
+            switch roll {
+            case 0: namePart = japaneseMaleNames.randomElement() ?? ""
+            default: namePart = japaneseFemaleNames.randomElement() ?? ""
+            }
+            return surname + namePart
             
         case .fantasy:
             guard let prefix = fantasyPrefixes.randomElement(),
@@ -223,13 +249,14 @@ struct NameGeneratorPanelView: View {
 }
 
 enum NameStyle: String, CaseIterable, Identifiable {
-    case chinese, western, fantasy
+    case chinese, western, japanese, fantasy
     
     var id: String { rawValue }
     var displayName: String {
         switch self {
         case .chinese: return "中文"
         case .western: return "西方"
+        case .japanese: return "日本"
         case .fantasy: return "奇幻"
         }
     }

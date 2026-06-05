@@ -120,28 +120,15 @@ struct ContentView: View {
         // 释放旧容器
         closeProject()
 
-        let schema = AppSchema.shared
-
         let dbURL = URL(fileURLWithPath: meta.storagePath)
             .appendingPathComponent("NovelCraft.store")
-        let config = ModelConfiguration(schema: schema, url: dbURL)
 
         do {
-            let container = try ModelContainer(for: schema, configurations: config)
+            let container = try ProjectDatabase.openOrCreate(at: dbURL)
             try setupProject(from: container, meta: meta)
         } catch {
-            print("打开项目失败，尝试重建数据库: \(error)")
-            // Schema 不兼容时删除旧数据库并重建
-            do {
-                if FileManager.default.fileExists(atPath: dbURL.path) {
-                    try FileManager.default.removeItem(at: dbURL)
-                }
-                let container = try ModelContainer(for: schema, configurations: config)
-                try setupProject(from: container, meta: meta)
-            } catch {
-                print("重建数据库失败: \(error)")
-                selectedProjectID = nil
-            }
+            print("打开项目数据库失败: \(error)")
+            selectedProjectID = nil
         }
     }
     

@@ -403,8 +403,7 @@ struct ProjectInfoView: View {
         // 同步更新项目数据库中的 Project 实体
         do {
             let dbURL = URL(fileURLWithPath: meta.storagePath).appendingPathComponent("NovelCraft.store")
-            let config = ModelConfiguration(schema: AppSchema.shared, url: dbURL)
-            let container = try ModelContainer(for: AppSchema.shared, configurations: config)
+            let container = try ProjectDatabase.openOrCreate(at: dbURL)
             let context = container.mainContext
             
             let descriptor = FetchDescriptor<Project>()
@@ -611,8 +610,7 @@ struct NewProjectView: View {
             }
             
             let dbURL = URL(fileURLWithPath: projectPath).appendingPathComponent("NovelCraft.store")
-            let config = ModelConfiguration(schema: AppSchema.shared, url: dbURL)
-            let container = try ModelContainer(for: AppSchema.shared, configurations: config)
+            let container = try ProjectDatabase.openOrCreate(at: dbURL)
             let context = container.mainContext
             
             let project = Project(

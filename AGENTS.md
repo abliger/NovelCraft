@@ -90,6 +90,7 @@ NovelCraft/
 │       │   └── ... 其他内置插件
 │       └── Utils/
 │           ├── ProjectRegistry.swift    # 项目注册表（JSON 元数据索引，含内存缓存）
+│           ├── ProjectDatabase.swift    # 项目数据库安全打开与备份（永不删库）
 │           ├── ExportEngine.swift       # 导出逻辑（Markdown/TXT/PDF/EPUB）
 │           ├── ExportStrategy.swift     # 导出策略模式
 │           ├── ThemeManager.swift       # 主题管理（跟随系统/浅色/深色）
@@ -154,6 +155,7 @@ cd NovelCraft
 - 时间戳字段：`createdAt`、`updatedAt` 在初始化时设置为 `Date()`，并在修改时更新。
 - 计算属性（如 `wordCount`、`progressPercentage`）不持久化，仅用于 UI 展示。
 - **项目隔离**：每个项目拥有独立的 SwiftData 数据库文件（`NovelCraft.store`），存储在项目目录下；应用不再使用全局单数据库。
+- **数据迁移与备份**：所有项目数据库的统一打开入口为 `ProjectDatabase.openOrCreate(at:)`。SwiftData 会自动处理大部分轻量级迁移（增删可选字段、新增实体等）。当遇到无法自动迁移或数据库损坏时，旧数据库文件（含 `.store`、`-wal`、`-shm`）会被完整备份到 `storagePath/NovelCraft.store.backup.<时间戳>/` 目录，随后创建新的空数据库。代码中**严禁**直接调用 `FileManager.default.removeItem` 删除已有数据库。
 - **Project 模型**：
   - `title` 为必填字段（无默认值）。
   - `storagePath` 为 `String`（非 Optional），指向包含项目名称的完整目录路径。
@@ -211,6 +213,7 @@ cd NovelCraft
 - **文件系统**: `ExportEngine` 在 `FileManager.default.temporaryDirectory` 中创建临时文件，EPUB 生成还会创建临时目录并在完成后删除。确保临时目录可写。
 - **外部进程**: EPUB 导出调用 `/usr/bin/zip`，在沙盒环境或自定义运行环境中需确认该路径存在。
 - **数据丢失风险**: 多处使用 `try? modelContext.save()` 静默忽略保存错误；关键操作（如批量删除）可考虑增加显式错误提示。
+- **数据库安全**: 项目数据库由 `ProjectDatabase` 统一管理，打开失败时会自动备份旧库，绝不会直接删除用户数据。
 - **Markdown 解析**: 当前为基于 Lexer + AST 的自定义解析器，已支持标题、粗体、斜体、删除线、代码块、行内代码、链接、图片、列表、引用块、分隔线，以及双向链接语法 `((id "锚文本"))` 和块嵌入 `{{id}}`。对复杂嵌套语法支持有限，后续若增强预览/导出需评估引入成熟 Markdown 解析库。
 - **图片处理**: 编辑器支持通过工具栏按钮插入图片，提供三种处理策略（引用原路径 / 拷贝本地到项目 / 下载网图到项目），图片文件统一存放在 `storagePath/assets/images/` 下。
 - **项目文件夹**: 删除项目时会同时删除整个 `storagePath` 目录（包含数据库、封面与 `.md` 文件），此操作不可撤销。
@@ -218,4 +221,4 @@ cd NovelCraft
 
 ---
 
-*Last updated: 2026-05-31*
+*Last updated: 2026-06-05*

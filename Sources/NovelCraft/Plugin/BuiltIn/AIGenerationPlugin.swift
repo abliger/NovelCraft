@@ -182,6 +182,7 @@ struct AIGenerationPanelView: View {
     @State private var promptPreviewText: String = ""
     @State private var showRuleEditor = false
     @State private var ruleText: String = ""
+    @State private var customInstruction: String = ""
     
     @State private var apiKey: String = ""
     @State private var selectedStrategyID: String = "deepseek"
@@ -343,6 +344,9 @@ struct AIGenerationPanelView: View {
             Picker("", selection: $generationMode) {
                 Text("续写").tag(GenerationMode.continueWriting)
                 Text("扩写").tag(GenerationMode.expand)
+                Text("润色").tag(GenerationMode.polish)
+                Text("改写").tag(GenerationMode.rewrite)
+                Text("自定义").tag(GenerationMode.custom)
             }
             .pickerStyle(.segmented)
             
@@ -350,6 +354,26 @@ struct AIGenerationPanelView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            
+            if generationMode == .rewrite || generationMode == .custom {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(generationMode == .rewrite ? "改写要求" : "自定义提示")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextEditor(text: $customInstruction)
+                        .font(.system(size: 13))
+                        .lineSpacing(4)
+                        .frame(minHeight: 60)
+                        .padding(6)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.secondary.opacity(0.06))
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                }
+            }
         }
     }
     
@@ -555,6 +579,12 @@ struct AIGenerationPanelView: View {
         \(ruleText)
         """
         
+        let instructionSection = customInstruction.isEmpty ? "" : """
+        
+        ## 用户额外指令
+        \(customInstruction)
+        """
+        
         return """
         \(agentContext)
         
@@ -562,6 +592,7 @@ struct AIGenerationPanelView: View {
         \(ruleSection)
         
         \(modePrompt)
+        \(instructionSection)
         
         当前卷：\(currentVolumeTitle)
         当前章节标题：\(chapter.title)
